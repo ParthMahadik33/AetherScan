@@ -55,6 +55,13 @@ attack_lock = threading.Lock()
 def now_iso():
     return datetime.datetime.utcnow().isoformat()
 
+KNOWN_VPN_ASNS = {"AS9009", "AS20473", "AS62888", "AS209854", "AS132203"}
+
+def is_vpn_ip(ip):
+    # Simulate ASN lookup — in production use ip-api.com or ipinfo.io
+    # For simulation: if IP starts with 103.21 treat as potential VPN
+    return ip.startswith("103.21")
+
 
 def get_db_conn():
     return database.get_connection()
@@ -74,6 +81,7 @@ def derive_attack_type(features):
 
 def execute_actions(ip, status, risk_score, attack_type):
     current_time = time.time()
+
 
     if attack_type == "Credential_Stuffing" and status in ("ALERT", "BLOCKED"):
         # Invalidate any sessions that were created from this IP
@@ -130,6 +138,20 @@ def execute_actions(ip, status, risk_score, attack_type):
                 "session_invalidated": True,
             },
         )
+        return
+
+    # ATO step-up auth — suspicious travel speed but not physically impossible
+    # Instead of hard blocking, challenge with MFA like industry standard
+    # This handles the "2000-5000 km/h" range from scoring.py Override 2
+    if attack_type == "ATO_Impossible_Travel" and status == "ALERT":
+        captcha_ips.add(ip)
+        rate_limited_ips[ip] = current_time + 120  # 2 min window to complete MFA
+        socketio.emit("action_taken", {
+            "ip": ip,
+            "action": "MFA_REQUIRED",
+            "reason": "Suspicious travel speed detected — step-up authentication required. If this is you, please verify via MFA.",
+            "geo_context": "Login detected from unexpected location. Possible causes: VPN, travel, or account compromise.",
+        })
         return
 
     if status == "ALERT" or risk_score >= 70:
@@ -253,10 +275,12 @@ def api_event():
         })
         return jsonify({"status": "BLOCKED", "action": "REQUEST_REJECTED", "risk_score": 100}), 403
 
-    if probe_result.get("is_probing") and status in {"NORMAL", "MONITORING"}:
-        status = "PROBING"
-
     risk_score = float(score_result["risk_score"])
+
+    if probe_result.get("is_probing") and status in {"NORMAL", "MONITORING"}:
+        status = "BLOCKED"  # was "PROBING" — probing = instant block, no escalation needed
+        risk_score = max(risk_score, 85.0)
+
     execute_actions(ip, status, risk_score, attack_type)
 
     timestamp = now_iso()

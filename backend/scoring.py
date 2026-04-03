@@ -153,6 +153,33 @@ def compute_risk_score(ip, features_dict, probe_score=0.0):
     else:
         risk_score = (iso * ISO_WEIGHT) + (lstm * LSTM_WEIGHT) + (probe_score * PROBE_WEIGHT)
     
+    geo_velocity = features_dict.get("geo_velocity", 0)
+    device_change = features_dict.get("device_change_score", 0)
+
+    # Override 1 — Physically impossible travel + new device = confirmed ATO
+    # No commercial aircraft exceeds 3000 km/h. Above 5000 = stolen credentials
+    # used immediately after victim login. Mirrors Microsoft Entra "Impossible Travel" rule
+    # but uses device_change_score instead of external VPN database.
+    if geo_velocity > 5000 and device_change > 0.7:
+        return {
+            "ip": ip,
+            "risk_score": 100.0,
+            "iso_score": iso,
+            "lstm_score": lstm,
+            "probe_score": float(probe_score),
+            "confidence": 100.0,
+            "status": "BLOCKED"
+        }
+
+    # Override 2 — Suspicious but physically possible travel
+    # 2000-5000 km/h = faster than any commercial aircraft but attacker may have
+    # waited a few hours. Don't hard block — trigger step-up MFA like Google does.
+    # If device is also new, push score higher to ensure ALERT status fires.
+    if 2000 < geo_velocity <= 5000:
+        risk_score = max(risk_score, 75.0)
+        if device_change > 0.7:
+            risk_score = max(risk_score, 85.0)
+
     risk_score = float(np.clip(risk_score, 0, 100))
     
     if risk_score >= 80:
