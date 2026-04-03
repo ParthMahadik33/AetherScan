@@ -229,22 +229,16 @@ def api_event():
     success = int(bool(payload.get("success", 0)))
     features = parse_features(payload)
 
+    probe_result = probing_detector.check_probing(ip, features)
+    probe_score = float(probe_result.get("probe_score", 0.0))
+
     expire_ts = rate_limited_ips.get(ip)
     if expire_ts:
         remaining = int(max(0, expire_ts - time.time()))
         if remaining > 0:
-            return (
-                jsonify({
-                    "status": "RATE_LIMITED",
-                    "action": "SLOW_DOWN",
-                    "retry_after": remaining,
-                }),
-                429,
-            )
-        rate_limited_ips.pop(ip, None)
-
-    probe_result = probing_detector.check_probing(ip, features)
-    probe_score = float(probe_result.get("probe_score", 0.0))
+            probe_score = min(100.0, probe_score + 40.0)
+        else:
+            rate_limited_ips.pop(ip, None)
 
     score_result = scoring.compute_risk_score(ip, features, probe_score=probe_score)
     attack_type = derive_attack_type(features)
