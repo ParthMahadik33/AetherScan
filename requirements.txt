@@ -1,0 +1,11 @@
+flask
+flask-socketio
+flask-cors
+scikit-learn
+torch
+numpy
+pandas
+python-dotenv
+requests
+groq
+eventlet
