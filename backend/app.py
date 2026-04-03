@@ -1,7 +1,5 @@
 import datetime
-import importlib.util
 import json
-import os
 import threading
 import time
 
@@ -10,6 +8,7 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
+import attack_launcher
 import database
 import honeypot
 import llm_narrator
@@ -365,23 +364,6 @@ def api_clear():
     return jsonify({"status": "cleared"}), 200
 
 
-def _load_simulation_module(attack_type):
-    sim_file = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "simulation",
-        f"{attack_type}.py",
-    )
-    if not os.path.exists(sim_file):
-        return None
-
-    spec = importlib.util.spec_from_file_location(f"sim_{attack_type}", sim_file)
-    if spec is None or spec.loader is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 @app.post("/api/attack/start")
 def api_attack_start():
     payload = request.get_json(silent=True) or {}
@@ -390,48 +372,9 @@ def api_attack_start():
         return jsonify({"status": "error", "message": "attack_type is required"}), 400
 
     with attack_lock:
-        if attack_type in active_attacks:
-            return jsonify({"status": "started", "attack_type": attack_type}), 200
-
-        sim_module = _load_simulation_module(attack_type)
-        if sim_module is None:
-            return jsonify({"status": "error", "message": "simulation not found"}), 404
-
-        stop_event = threading.Event()
-
-        def _emit_event(_payload=None):
-            with attack_lock:
-                if attack_type in active_attacks:
-                    active_attacks[attack_type]["events_sent"] += 1
-            if _payload is not None:
-                socketio.emit("attack_event", {"attack_type": attack_type, "data": _payload})
-
-        def _runner():
-            try:
-                if hasattr(sim_module, "run_attack"):
-                    try:
-                        sim_module.run_attack(stop_event=stop_event, emit_event=_emit_event)
-                    except TypeError:
-                        try:
-                            sim_module.run_attack(stop_event)
-                        except TypeError:
-                            sim_module.run_attack()
-                else:
-                    while not stop_event.is_set():
-                        time.sleep(1)
-            finally:
-                with attack_lock:
-                    active_attacks.pop(attack_type, None)
-
-        thread = threading.Thread(target=_runner, daemon=True)
-        active_attacks[attack_type] = {
-            "thread": thread,
-            "events_sent": 0,
-            "stop_event": stop_event,
-        }
-        thread.start()
-
-    return jsonify({"status": "started", "attack_type": attack_type}), 200
+        result = attack_launcher.start_attack(attack_type, active_attacks)
+    status_code = 200 if result.get("status") in {"started", "already_running"} else 404
+    return jsonify(result), status_code
 
 
 @app.post("/api/attack/stop")
@@ -442,20 +385,14 @@ def api_attack_stop():
         return jsonify({"status": "error", "message": "attack_type is required"}), 400
 
     with attack_lock:
-        attack_info = active_attacks.pop(attack_type, None)
-        if attack_info and "stop_event" in attack_info:
-            attack_info["stop_event"].set()
-
-    return jsonify({"status": "stopped"}), 200
+        result = attack_launcher.stop_attack(attack_type, active_attacks)
+    return jsonify(result), 200
 
 
 @app.get("/api/attack/status")
 def api_attack_status():
     with attack_lock:
-        data = [
-            {"attack_type": attack_type, "events_sent": info["events_sent"]}
-            for attack_type, info in active_attacks.items()
-        ]
+        data = attack_launcher.get_status(active_attacks)
     return jsonify(data), 200
 
 

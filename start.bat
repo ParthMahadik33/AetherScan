@@ -1,0 +1,19 @@
+@echo off
+echo Starting AetherSense AI Platform...
+echo.
+echo [1/3] Starting Flask Backend...
+cd /d "%~dp0"
+start "AetherSense Backend" cmd /k "python -m backend.app"
+timeout /t 3 /nobreak > nul
+echo [2/3] Opening SOC Dashboard...
+start "" "frontend\dashboard.html"
+timeout /t 1 /nobreak > nul
+echo [3/3] Opening Attack Console...
+start "" "frontend\attacker.html"
+timeout /t 1 /nobreak > nul
+echo [Optional] Opening SecureBank...
+start "" "frontend\bank.html"
+echo.
+echo AetherSense AI is running on http://localhost:5000
+echo Press any key to exit this launcher...
+pause > nul

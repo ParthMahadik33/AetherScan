@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AetherSense Bank</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0f1e;
+      --primary: #003366;
+      --primary-dark: #001133;
+      --accent: #00a651;
+      --text: #0f172a;
+      --muted: #64748b;
+      --card: #ffffff;
+      --line: #e2e8f0;
+      --warning: #eab308;
+      --ok: #16a34a;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", sans-serif;
+      background: var(--bg);
+      color: #fff;
+    }
+
+    .page { display: none; min-height: 100vh; }
+    .page.active { display: block; }
+
+    .container { width: min(1180px, 92vw); margin: 0 auto; }
+
+    .top-nav {
+      height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.2px; }
+    .shield {
+      width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(145deg, #0f4f96, #003366);
+      display: grid; place-items: center; font-size: 16px;
+    }
+
+    .nav-right { display: flex; align-items: center; gap: 22px; }
+    .nav-right a { color: #dbeafe; text-decoration: none; font-size: 14px; }
+    .btn {
+      border: none; border-radius: 10px; padding: 12px 16px; font-weight: 600; cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.2s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-green { background: var(--accent); color: #fff; }
+    .btn-outline { background: transparent; color: var(--primary); border: 1px solid #cbd5e1; }
+    .btn-dark { background: #0f172a; color: #fff; }
+
+    .hero {
+      padding: 48px 0 24px;
+      background: linear-gradient(130deg, var(--primary), var(--primary-dark));
+    }
+    .hero-grid {
+      display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 28px; align-items: center;
+    }
+    .hero h1 { margin: 0 0 18px; font-size: clamp(30px, 4.4vw, 52px); line-height: 1.08; }
+    .hero p { margin: 0 0 20px; color: #cbd5e1; max-width: 620px; }
+
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 18px; }
+    .stat-card {
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.22); border-radius: 14px; padding: 14px;
+    }
+    .stat-card strong { display: block; font-size: 20px; color: #fff; margin-bottom: 4px; }
+    .stat-card span { color: #dbeafe; font-size: 13px; }
+
+    .login-card {
+      background: var(--card); color: var(--text); border-radius: 18px; padding: 24px;
+      box-shadow: 0 16px 40px rgba(2, 6, 23, 0.35);
+    }
+    .login-card h2 { margin: 0 0 16px; font-size: 28px; color: #0f172a; }
+    .field { margin-bottom: 13px; }
+    .field label { display: block; margin-bottom: 6px; color: #334155; font-size: 13px; font-weight: 600; }
+    .field input, .field select {
+      width: 100%; height: 44px; border: 1px solid #cbd5e1; border-radius: 10px;
+      padding: 0 12px; font-size: 14px;
+    }
+    .password-wrap { position: relative; }
+    .toggle-pass {
+      position: absolute; right: 10px; top: 10px; background: transparent; border: none; color: #334155; cursor: pointer;
+      font-weight: 600;
+    }
+    .row-between { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 16px; color: #334155; font-size: 13px; }
+    .full { width: 100%; }
+    .forgot { color: var(--primary); text-decoration: none; font-weight: 600; }
+    .divider { text-align: center; margin: 16px 0; color: #94a3b8; font-size: 13px; position: relative; }
+    .divider::before, .divider::after {
+      content: ""; position: absolute; top: 50%; width: 42%; border-top: 1px solid #e2e8f0;
+    }
+    .divider::before { left: 0; }
+    .divider::after { right: 0; }
+    .badges { margin-top: 15px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .badge {
+      font-size: 12px; border-radius: 999px; padding: 6px 10px; background: #f1f5f9; color: #0f172a; border: 1px solid #e2e8f0;
+    }
+
+    .features-strip {
+      padding: 26px 0 40px;
+      background: #060b18;
+    }
+    .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .feature-card {
+      background: #0f172a; border: 1px solid #1e293b; border-radius: 14px; padding: 18px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .feature-icon { width: 34px; height: 34px; border-radius: 9px; background: #003366; display: grid; place-items: center; }
+
+    .dash-shell { color: var(--text); background: #f1f5f9; min-height: 100vh; }
+    .dash-header {
+      background: #0f172a; color: #fff; height: 76px; display: flex; align-items: center;
+    }
+    .dash-header .container {
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .user-box { display: flex; align-items: center; gap: 12px; }
+    .avatar { width: 36px; height: 36px; border-radius: 50%; background: #1e293b; display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+    .bell { position: relative; margin-right: 4px; }
+    .bell::after {
+      content: "3"; position: absolute; top: -7px; right: -10px; width: 18px; height: 18px; border-radius: 50%;
+      background: #ef4444; color: #fff; font-size: 11px; display: grid; place-items: center;
+    }
+
+    .dash-main { padding: 20px 0 28px; }
+    .balance-card {
+      background: linear-gradient(135deg, #00a651, #047857);
+      color: #fff; border-radius: 16px; padding: 20px; margin-bottom: 16px;
+    }
+    .balance-row { display: flex; justify-content: space-between; gap: 14px; align-items: end; flex-wrap: wrap; }
+    .balance-card h2 { margin: 6px 0 6px; font-size: clamp(28px, 4vw, 44px); }
+    .balance-actions { display: flex; gap: 10px; }
+    .metric-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;
+    }
+    .metric-card {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 14px;
+    }
+    .metric-title { color: #64748b; font-size: 13px; margin-bottom: 6px; }
+    .metric-value { font-size: 22px; font-weight: 700; color: #0f172a; }
+    .progress {
+      margin-top: 10px; height: 8px; border-radius: 999px; background: #e2e8f0; overflow: hidden;
+    }
+    .progress > span { display: block; width: 73%; height: 100%; background: #10b981; }
+
+    .card {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px;
+    }
+    .section-title { margin: 0 0 12px; font-size: 18px; color: #0f172a; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e2e8f0; font-size: 14px; color: #1e293b; }
+    th { color: #475569; font-size: 12px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .status {
+      border-radius: 999px; font-size: 12px; padding: 4px 9px; font-weight: 600; display: inline-block;
+    }
+    .ok { background: #dcfce7; color: #166534; }
+    .pending { background: #fef9c3; color: #854d0e; }
+
+    .quick-grid {
+      margin-top: 16px;
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    }
+    .quick-card {
+      text-align: center; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; color: #0f172a;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .quick-card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(15, 23, 42, 0.1); }
+    .quick-card .icon { font-size: 22px; display: block; margin-bottom: 7px; }
+
+    .payments-shell { background: #eef2ff; color: #0f172a; min-height: 100vh; padding-bottom: 30px; }
+    .payments-head { padding: 16px 0; }
+    .payments-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 14px; }
+    .input-prefix { position: relative; }
+    .input-prefix span { position: absolute; left: 12px; top: 12px; color: #475569; font-weight: 700; }
+    .input-prefix input { padding-left: 28px; }
+    .payee-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .payee-card { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; background: #fff; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+    .tab { border: 1px solid #cbd5e1; background: #fff; color: #0f172a; padding: 8px 10px; border-radius: 8px; font-size: 13px; }
+    .tab.active { background: #0f172a; color: #fff; border-color: #0f172a; }
+
+    .toast {
+      position: fixed; right: 18px; bottom: 18px; background: #052e16; color: #dcfce7;
+      border: 1px solid #14532d; padding: 12px 14px; border-radius: 10px; opacity: 0;
+      pointer-events: none; transform: translateY(10px); transition: all 0.2s ease;
+      z-index: 99;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 980px) {
+      .hero-grid, .payments-grid { grid-template-columns: 1fr; }
+      .metric-grid { grid-template-columns: repeat(2, 1fr); }
+      .feature-grid, .quick-grid { grid-template-columns: 1fr 1fr; }
+      .stats { grid-template-columns: 1fr; }
+      .nav-right a { display: none; }
+    }
+    @media (max-width: 640px) {
+      .metric-grid, .feature-grid, .quick-grid, .payee-grid { grid-template-columns: 1fr; }
+      .balance-actions { width: 100%; }
+      .balance-actions .btn { flex: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div id="login-page" class="page active">
+    <nav class="top-nav container">
+      <div class="brand"><span class="shield">🛡</span><span>AetherSense Bank</span></div>
+      <div class="nav-right">
+        <a href="#">Personal</a>
+        <a href="#">Business</a>
+        <a href="#">About</a>
+        <a href="#">Help</a>
+        <button class="btn btn-green">Sign Up</button>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <h1>Secure Banking for the Digital Age</h1>
+          <p>Enterprise-grade account protection, instant monitoring, and AI-assisted fraud detection for modern digital banking.</p>
+          <div class="stats">
+            <div class="stat-card"><strong>2.4M+</strong><span>Customers</span></div>
+            <div class="stat-card"><strong>$48B</strong><span>Assets Protected</span></div>
+            <div class="stat-card"><strong>99.99%</strong><span>Uptime</span></div>
+          </div>
+        </div>
+        <div class="login-card">
+          <h2>Welcome Back</h2>
+          <div class="field">
+            <label for="username">Username</label>
+            <input id="username" type="text" placeholder="john.doe">
+          </div>
+          <div class="field password-wrap">
+            <label for="password">Password</label>
+            <input id="password" type="password" placeholder="••••••••">
+            <button type="button" id="toggle-password" class="toggle-pass">Show</button>
+          </div>
+          <div class="row-between">
+            <label><input type="checkbox"> Remember me</label>
+            <a class="forgot" href="#">Forgot Password?</a>
+          </div>
+          <button id="sign-in-btn" class="btn btn-green full">Sign In</button>
+          <div class="divider">or</div>
+          <button class="btn btn-outline full">👆 Biometric Login</button>
+          <div class="badges">
+            <span class="badge">SSL Secured</span>
+            <span class="badge">256-bit Encryption</span>
+            <span class="badge">2FA Protected</span>
+          </div>
+
+          <div style="display:none;" aria-hidden="true">
+            <input name="email_confirm" type="text">
+            <input name="phone_verify" type="text">
+            <input name="hidden_token" type="text">
+            <input name="bot_check" type="text">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="features-strip">
+      <div class="container feature-grid">
+        <div class="feature-card"><span class="feature-icon">🧠</span><div><strong>AI-Powered Security</strong></div></div>
+        <div class="feature-card"><span class="feature-icon">💸</span><div><strong>Zero-Fee Transfers</strong></div></div>
+        <div class="feature-card"><span class="feature-icon">🔔</span><div><strong>Instant Notifications</strong></div></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="dashboard-page" class="page dash-shell">
+    <header class="dash-header">
+      <div class="container">
+        <div class="brand"><span class="shield">🛡</span><span>AetherSense Bank</span></div>
+        <div class="user-box">
+          <span class="bell">🔔</span>
+          <span class="avatar">JD</span>
+          <div>
+            <div style="font-size:12px;color:#94a3b8">Signed in as</div>
+            <div style="font-weight:700">John Doe</div>
+          </div>
+          <button id="logout-btn" class="btn btn-dark">Logout</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="dash-main">
+      <div class="container">
+        <section class="balance-card">
+          <div class="balance-row">
+            <div>
+              <div style="opacity:0.9">Total Balance</div>
+              <h2>$48,291.50</h2>
+              <div>Account Number: **** **** 4821</div>
+            </div>
+            <div class="balance-actions">
+              <button id="quick-transfer-btn" class="btn btn-dark">Quick Transfer</button>
+              <button class="btn btn-outline" style="border-color:#dcfce7;color:#064e3b;background:#dcfce7;">Pay Bills</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="metric-grid">
+          <div class="metric-card"><div class="metric-title">Available Balance</div><div class="metric-value">$45,000.00</div></div>
+          <div class="metric-card"><div class="metric-title">This Month Spent</div><div class="metric-value">$3,291.50</div></div>
+          <div class="metric-card"><div class="metric-title">Savings Goal</div><div class="metric-value">73%</div><div class="progress"><span></span></div></div>
+          <div class="metric-card"><div class="metric-title">Reward Points</div><div class="metric-value">12,450 pts</div></div>
+        </section>
+
+        <section class="card">
+          <h3 class="section-title">Recent Transactions</h3>
+          <table>
+            <thead>
+              <tr><th>Merchant</th><th>Amount</th><th>Date</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Amazon</td><td>-$129.99</td><td>2026-04-01</td><td><span class="status ok">Completed</span></td></tr>
+              <tr><td>Netflix</td><td>-$17.99</td><td>2026-03-30</td><td><span class="status ok">Completed</span></td></tr>
+              <tr><td>Starbucks</td><td>-$8.45</td><td>2026-03-29</td><td><span class="status ok">Completed</span></td></tr>
+              <tr><td>Uber</td><td>-$24.10</td><td>2026-03-28</td><td><span class="status pending">Pending</span></td></tr>
+              <tr><td>Whole Foods</td><td>-$95.34</td><td>2026-03-27</td><td><span class="status ok">Completed</span></td></tr>
+              <tr><td>Apple</td><td>-$4.99</td><td>2026-03-26</td><td><span class="status ok">Completed</span></td></tr>
+              <tr><td>Shell</td><td>-$62.18</td><td>2026-03-25</td><td><span class="status pending">Pending</span></td></tr>
+              <tr><td>Gym Membership</td><td>-$45.00</td><td>2026-03-24</td><td><span class="status ok">Completed</span></td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="quick-grid">
+          <div class="quick-card"><span class="icon">💸</span>Transfer Money</div>
+          <div class="quick-card"><span class="icon">🧾</span>Pay Bills</div>
+          <div class="quick-card"><span class="icon">🤝</span>Request Money</div>
+          <div class="quick-card"><span class="icon">💳</span>Card Management</div>
+          <div class="quick-card"><span class="icon">📄</span>Statements</div>
+          <div class="quick-card"><span class="icon">🎧</span>Support</div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="payments-page" class="page payments-shell">
+    <div class="container payments-head">
+      <button id="back-dashboard-btn" class="btn btn-dark">← Back</button>
+    </div>
+    <div class="container payments-grid">
+      <section class="card">
+        <h3 class="section-title">Send Transfer</h3>
+        <form id="transfer-form">
+          <div class="field">
+            <label for="from-account">From Account</label>
+            <select id="from-account">
+              <option selected>Checking *4821</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="to-account">To Account</label>
+            <input id="to-account" type="text" placeholder="Recipient account number">
+          </div>
+          <div class="field input-prefix">
+            <label for="amount">Amount</label>
+            <span>$</span>
+            <input id="amount" type="number" min="1" step="0.01" placeholder="0.00">
+          </div>
+          <div class="field">
+            <label for="memo">Note / Memo</label>
+            <input id="memo" type="text" placeholder="Optional note">
+          </div>
+          <button class="btn btn-green full" type="submit">Send Transfer</button>
+        </form>
+      </section>
+
+      <section style="display:grid; gap:14px;">
+        <div class="card">
+          <h3 class="section-title">Recent Payees</h3>
+          <div class="payee-grid">
+            <div class="payee-card"><strong>AJ</strong><div>Alex Johnson</div><small>Last: $250 on 2026-03-29</small></div>
+            <div class="payee-card"><strong>SM</strong><div>Sarah Miller</div><small>Last: $90 on 2026-03-22</small></div>
+            <div class="payee-card"><strong>TR</strong><div>Tom Rivera</div><small>Last: $420 on 2026-03-11</small></div>
+            <div class="payee-card"><strong>LN</strong><div>Liam Nguyen</div><small>Last: $75 on 2026-02-28</small></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="section-title">Transaction History</h3>
+          <div class="tabs">
+            <button class="tab active" type="button">All</button>
+            <button class="tab" type="button">Sent</button>
+            <button class="tab" type="button">Received</button>
+            <button class="tab" type="button">Pending</button>
+          </div>
+          <table>
+            <thead><tr><th>Type</th><th>Amount</th><th>Date</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Sent to Alex Johnson</td><td>-$250.00</td><td>2026-03-29</td><td><span class="status ok">Completed</span></td></tr>
+              <tr><td>Received from Payroll</td><td>+$3,200.00</td><td>2026-03-28</td><td><span class="status ok">Completed</span></td></tr>
+              <tr><td>Sent to Utility Co.</td><td>-$112.80</td><td>2026-03-27</td><td><span class="status pending">Pending</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div id="toast" class="toast">Transfer sent successfully.</div>
+
+  <script>
+    const loginPage = document.getElementById("login-page");
+    const dashboardPage = document.getElementById("dashboard-page");
+    const paymentsPage = document.getElementById("payments-page");
+    const toast = document.getElementById("toast");
+
+    const signInBtn = document.getElementById("sign-in-btn");
+    const logoutBtn = document.getElementById("logout-btn");
+    const quickTransferBtn = document.getElementById("quick-transfer-btn");
+    const backDashboardBtn = document.getElementById("back-dashboard-btn");
+    const transferForm = document.getElementById("transfer-form");
+    const togglePasswordBtn = document.getElementById("toggle-password");
+    const passwordInput = document.getElementById("password");
+
+    function showPage(pageId) {
+      [loginPage, dashboardPage, paymentsPage].forEach((el) => el.classList.remove("active"));
+      document.getElementById(pageId).classList.add("active");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    signInBtn.addEventListener("click", () => showPage("dashboard-page"));
+    logoutBtn.addEventListener("click", () => showPage("login-page"));
+    quickTransferBtn.addEventListener("click", () => showPage("payments-page"));
+    backDashboardBtn.addEventListener("click", () => showPage("dashboard-page"));
+
+    togglePasswordBtn.addEventListener("click", () => {
+      const isPassword = passwordInput.type === "password";
+      passwordInput.type = isPassword ? "text" : "password";
+      togglePasswordBtn.textContent = isPassword ? "Hide" : "Show";
+    });
+
+    transferForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 2200);
+      transferForm.reset();
+    });
+
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+      });
+    });
+  </script>
+</body>
+</html>

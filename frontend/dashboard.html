@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AetherSense - Real-Time Detection Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --card: #1a1d2e;
+      --border: #2a2d3e;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #00ff88;
+      --red: #ff4444;
+      --yellow: #facc15;
+      --orange: #fb923c;
+      --purple: #a855f7;
+      --gold: #ffd700;
+      --green: #22c55e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .container { width: min(1400px, 94vw); margin: 0 auto; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+    }
+    .header {
+      margin: 14px 0 10px;
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand { display: flex; gap: 10px; align-items: center; }
+    .logo {
+      width: 34px; height: 34px; border-radius: 10px;
+      background: linear-gradient(145deg, #123257, #0d1f35);
+      display: grid; place-items: center;
+    }
+    .brand h1 { margin: 0; font-size: 22px; color: var(--accent); }
+    .brand p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+    .live-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      border: 1px solid #1f4f3d; border-radius: 999px; padding: 8px 12px;
+      background: rgba(0, 255, 136, 0.08);
+      color: #b8ffe0; font-size: 12px; font-weight: 700;
+    }
+    .live-badge.disconnected {
+      border-color: #7f1d1d; color: #fecaca; background: rgba(255, 68, 68, 0.1);
+    }
+    .dot {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 1.2s infinite;
+    }
+    .dot.red { background: var(--red); }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(0,255,136,0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(0,255,136,0); }
+      100% { box-shadow: 0 0 0 0 rgba(0,255,136,0); }
+    }
+    .disconnected .dot { animation-name: pulseRed; }
+    @keyframes pulseRed {
+      0% { box-shadow: 0 0 0 0 rgba(255,68,68,0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(255,68,68,0); }
+      100% { box-shadow: 0 0 0 0 rgba(255,68,68,0); }
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .stat { padding: 12px; }
+    .stat .k { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    .stat .v { font-size: 24px; font-weight: 800; }
+    .stat.gold { border-color: #7c5f00; background: rgba(255,215,0,0.08); }
+
+    .actions-panel { margin-bottom: 10px; padding: 10px 12px; }
+    .panel-head {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+    }
+    .panel-title { font-weight: 700; font-size: 15px; }
+    .count-badge {
+      border: 1px solid #315444; color: #b8ffe0; border-radius: 999px; padding: 4px 9px; font-size: 12px;
+    }
+    #actions-feed {
+      max-height: 150px;
+      overflow: auto;
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .action-line { border-left: 3px solid #334155; padding: 4px 8px; background: rgba(15, 23, 42, 0.3); }
+    .a-red { border-left-color: var(--red); }
+    .a-yellow { border-left-color: var(--yellow); }
+    .a-orange { border-left-color: var(--orange); }
+    .a-gold { border-left-color: var(--gold); }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 10px;
+    }
+    .table-wrap { padding: 10px 12px; margin-bottom: 10px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td {
+      border-bottom: 1px solid #252a3a;
+      padding: 8px 6px; text-align: left; white-space: nowrap;
+    }
+    th { color: #94a3b8; font-size: 11px; text-transform: uppercase; letter-spacing: .3px; }
+    tr.flash { animation: rowFlash .55s ease; }
+    @keyframes rowFlash {
+      0% { background: rgba(255,255,255,0.28); }
+      100% { background: transparent; }
+    }
+    .status {
+      padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    }
+    .s-NORMAL { background: rgba(34,197,94,.2); color: #bbf7d0; }
+    .s-MONITORING { background: rgba(250,204,21,.2); color: #fef08a; }
+    .s-ALERT { background: rgba(251,146,60,.2); color: #fed7aa; }
+    .s-BLOCKED { background: rgba(255,68,68,.2); color: #fecaca; }
+    .s-PROBING { background: rgba(168,85,247,.2); color: #e9d5ff; }
+    .s-HONEYPOT { background: rgba(255,215,0,.2); color: #fef08a; }
+    .risk {
+      border-radius: 8px; padding: 4px 8px; font-weight: 700; display: inline-block;
+      min-width: 54px; text-align: center;
+    }
+    .r-low { background: rgba(34,197,94,.18); color: #86efac; }
+    .r-med { background: rgba(250,204,21,.18); color: #fde68a; }
+    .r-high { background: rgba(251,146,60,.18); color: #fdba74; }
+    .r-crit { background: rgba(255,68,68,.18); color: #fca5a5; }
+
+    .chart-card { padding: 10px 12px; margin-bottom: 10px; }
+    .threat-feed { padding: 10px 12px; }
+    .feed-list { display: grid; gap: 8px; }
+    .threat-item {
+      border: 1px solid #2c3041; border-radius: 10px; padding: 9px;
+      animation: slideIn .25s ease;
+      background: rgba(15, 23, 42, 0.3);
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(25px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+    .threat-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .ago { color: var(--muted); font-size: 11px; }
+
+    .reports { margin-top: 10px; padding: 10px 12px; }
+    #report-list { display: grid; gap: 8px; min-height: 120px; }
+    .empty {
+      color: #6b7280; text-align: center; display: grid; place-items: center; min-height: 100px;
+    }
+    .report {
+      border: 1px solid #2b3146; border-left: 4px solid #64748b;
+      border-radius: 10px; padding: 10px; background: rgba(15,23,42,.35);
+    }
+    .report.red { border-left-color: var(--red); }
+    .report.orange { border-left-color: var(--orange); }
+    .report.gold { border-left-color: var(--gold); }
+    .report.purple { border-left-color: var(--purple); }
+    .report-head {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 7px; align-items: center;
+      font-size: 12px;
+    }
+    .pill {
+      border: 1px solid #374151; border-radius: 999px; padding: 2px 8px; color: #d1d5db;
+      font-size: 11px;
+    }
+    .report-text { font-style: italic; color: #f3f4f6; line-height: 1.4; font-size: 13px; }
+
+    .bottom-row { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 10px; }
+    .model-card { padding: 10px 12px; }
+    .model-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 7px 0; border-bottom: 1px solid #252a3a; font-size: 13px;
+    }
+    .model-row:last-child { border-bottom: none; }
+    .latency { color: #b8ffe0; font-size: 12px; margin-top: 8px; }
+
+    @media (max-width: 1260px) { .stats { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 980px) {
+      .main-grid, .bottom-row { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 620px) { .stats { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header card">
+      <div class="brand">
+        <div class="logo">🛡</div>
+        <div>
+          <h1>AetherSense</h1>
+          <p>Adaptive ML-Powered Threat Detection</p>
+        </div>
+      </div>
+      <div id="live-badge" class="live-badge"><span id="live-dot" class="dot"></span><span id="live-text">● LIVE / SECURE</span></div>
+    </header>
+
+    <section class="stats">
+      <div class="stat card"><div class="k">Total Events</div><div id="st-events" class="v">0</div></div>
+      <div class="stat card"><div class="k">Blocked IPs</div><div id="st-blocked" class="v">0</div></div>
+      <div class="stat card"><div class="k">Active Alerts</div><div id="st-alerts" class="v">0</div></div>
+      <div class="stat card"><div class="k">Normal Traffic</div><div id="st-normal" class="v">0</div></div>
+      <div class="stat card gold"><div class="k">Honeypot Catches</div><div id="st-honeypot" class="v">0</div></div>
+      <div class="stat card"><div class="k">Model Confidence</div><div id="st-confidence" class="v">0.0%</div></div>
+    </section>
+
+    <section class="actions-panel card">
+      <div class="panel-head">
+        <div class="panel-title">⚡ Automated Actions Taken</div>
+        <div class="count-badge">Live: <span id="actions-count">0</span></div>
+      </div>
+      <div id="actions-feed"></div>
+    </section>
+
+    <section class="main-grid">
+      <div>
+        <div class="table-wrap card">
+          <div class="panel-title" style="margin-bottom:8px;">Live IP Monitor</div>
+          <table>
+            <thead>
+              <tr>
+                <th>IP Address</th><th>Risk Score</th><th>ISO Score</th><th>LSTM Score</th><th>Probe Score</th>
+                <th>Confidence</th><th>Attack Type</th><th>Status</th><th>Action Taken</th>
+              </tr>
+            </thead>
+            <tbody id="ip-table-body"></tbody>
+          </table>
+        </div>
+
+        <div class="chart-card card">
+          <div class="panel-title" style="margin-bottom:8px;">Risk Score Timeline (Last 50 Events)</div>
+          <canvas id="riskChart" height="120"></canvas>
+        </div>
+      </div>
+
+      <aside class="threat-feed card">
+        <div class="panel-title" style="margin-bottom:8px;">🔴 Threat Intelligence Feed</div>
+        <div id="threat-feed-list" class="feed-list"></div>
+      </aside>
+    </section>
+
+    <section class="reports card">
+      <div class="panel-title">🤖 AetherSense AI - Threat Intelligence Reports</div>
+      <div id="report-list"><div class="empty">Waiting for threat activity...</div></div>
+    </section>
+
+    <section class="bottom-row">
+      <div class="model-card card">
+        <div class="panel-title" style="margin-bottom:4px;">Model Status</div>
+        <div class="model-row"><span>Isolation Forest</span><span id="m-iso">🟢 Active</span></div>
+        <div class="model-row"><span>LSTM Autoencoder</span><span id="m-lstm">🟢 Active</span></div>
+        <div class="model-row"><span>Probing Detector</span><span id="m-probe">🟢 Active</span></div>
+        <div class="model-row"><span>Honeypot Engine</span><span id="m-honey">🟢 Active</span></div>
+        <div class="latency">Last inference latency: <span id="latency">0 ms</span></div>
+      </div>
+      <div class="card" style="padding:12px;">
+        <div class="panel-title" style="margin-bottom:6px;">Operational Notes</div>
+        <div style="color:#9ca3af;font-size:13px;line-height:1.45;">
+          This interface reflects live backend scoring over WebSocket events. Alert handling and
+          automated responses are applied in real time as events are received.
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const state = {
+      totalEvents: 0,
+      blocked: 0,
+      alerts: 0,
+      normal: 0,
+      honeypot: 0,
+      confidences: [],
+      ipRows: new Map(),
+      ipActions: new Map(),
+      threatFeed: new Map(),
+      reports: new Map(),
+      actionCount: 0,
+      eventSeq: 0,
+      eventTimes: [],
+      chart: null
+    };
+
+    const els = {
+      liveBadge: document.getElementById("live-badge"),
+      liveDot: document.getElementById("live-dot"),
+      liveText: document.getElementById("live-text"),
+      stEvents: document.getElementById("st-events"),
+      stBlocked: document.getElementById("st-blocked"),
+      stAlerts: document.getElementById("st-alerts"),
+      stNormal: document.getElementById("st-normal"),
+      stHoneypot: document.getElementById("st-honeypot"),
+      stConfidence: document.getElementById("st-confidence"),
+      actionsFeed: document.getElementById("actions-feed"),
+      actionsCount: document.getElementById("actions-count"),
+      ipBody: document.getElementById("ip-table-body"),
+      threatList: document.getElementById("threat-feed-list"),
+      reportList: document.getElementById("report-list"),
+      latency: document.getElementById("latency"),
+      mIso: document.getElementById("m-iso"),
+      mLstm: document.getElementById("m-lstm"),
+      mProbe: document.getElementById("m-probe"),
+      mHoney: document.getElementById("m-honey")
+    };
+
+    function nowTime() { return new Date().toTimeString().slice(0, 8); }
+    function agoLabel(ts) {
+      const t = new Date(ts).getTime();
+      const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+      return `${sec}s ago`;
+    }
+    function fmt(n) { return Number(n || 0).toFixed(1); }
+    function statusClass(status) {
+      const key = String(status || "NORMAL").toUpperCase();
+      return `s-${key}`;
+    }
+    function riskClass(risk) {
+      if (risk >= 85) return "r-crit";
+      if (risk >= 70) return "r-high";
+      if (risk >= 50) return "r-med";
+      return "r-low";
+    }
+    function borderClass(status) {
+      if (status === "BLOCKED") return "red";
+      if (status === "ALERT") return "orange";
+      if (status === "HONEYPOT") return "gold";
+      if (status === "PROBING") return "purple";
+      return "";
+    }
+
+    function initChart() {
+      const ctx = document.getElementById("riskChart").getContext("2d");
+      state.chart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: "Risk Score",
+              data: [],
+              borderColor: "#00ff88",
+              pointRadius: 2,
+              borderWidth: 2,
+              tension: 0.25
+            },
+            {
+              label: "LSTM Score",
+              data: [],
+              borderColor: "#a855f7",
+              pointRadius: 1.8,
+              borderWidth: 1.8,
+              tension: 0.25
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: "#cbd5e1" } } },
+          scales: {
+            x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(148,163,184,0.1)" } },
+            y: { min: 0, max: 100, ticks: { color: "#94a3b8" }, grid: { color: "rgba(148,163,184,0.1)" } }
+          }
+        }
+      });
+    }
+
+    function setLive(connected) {
+      if (connected) {
+        els.liveBadge.classList.remove("disconnected");
+        els.liveDot.classList.remove("red");
+        els.liveText.textContent = "● LIVE / SECURE";
+      } else {
+        els.liveBadge.classList.add("disconnected");
+        els.liveDot.classList.add("red");
+        els.liveText.textContent = "● DISCONNECTED";
+      }
+    }
+
+    function updateStats() {
+      els.stEvents.textContent = state.totalEvents;
+      els.stBlocked.textContent = state.blocked;
+      els.stAlerts.textContent = state.alerts;
+      els.stNormal.textContent = state.normal;
+      els.stHoneypot.textContent = state.honeypot;
+      const avg = state.confidences.length
+        ? state.confidences.reduce((a, b) => a + b, 0) / state.confidences.length
+        : 0;
+      els.stConfidence.textContent = `${avg.toFixed(1)}%`;
+    }
+
+    function prependAction(entry, cssClass) {
+      const line = document.createElement("div");
+      line.className = `action-line ${cssClass}`;
+      line.textContent = entry;
+      els.actionsFeed.prepend(line);
+      state.actionCount += 1;
+      els.actionsCount.textContent = state.actionCount;
+    }
+
+    function updateIpTable(data) {
+      const ip = data.ip;
+      if (!ip) return;
+      state.ipRows.set(ip, { ...data, _updatedAt: Date.now(), action: state.ipActions.get(ip) || "-" });
+
+      const sorted = Array.from(state.ipRows.values())
+        .sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0))
+        .slice(0, 20);
+
+      state.ipRows = new Map(sorted.map((row) => [row.ip, row]));
+      els.ipBody.innerHTML = "";
+
+      sorted.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.classList.add("flash");
+        tr.innerHTML = `
+          <td>${row.ip}</td>
+          <td><span class="risk ${riskClass(row.risk_score || 0)}">${fmt(row.risk_score)}</span></td>
+          <td>${fmt(row.iso_score)}</td>
+          <td>${fmt(row.lstm_score)}</td>
+          <td>${fmt(row.probe_score)}</td>
+          <td>${fmt(row.confidence)}%</td>
+          <td>${row.attack_type || "-"}</td>
+          <td><span class="status ${statusClass(row.status)}">${row.status || "NORMAL"}</span></td>
+          <td>${row.action || "-"}</td>
+        `;
+        els.ipBody.appendChild(tr);
+      });
+    }
+
+    function updateChart(data) {
+      state.eventSeq += 1;
+      const seq = state.eventSeq;
+      const risk = Number(data.risk_score || 0);
+      const lstm = Number(data.lstm_score || 0);
+
+      state.chart.data.labels.push(seq);
+      state.chart.data.datasets[0].data.push(risk);
+      state.chart.data.datasets[1].data.push(lstm);
+
+      if (state.chart.data.labels.length > 50) {
+        state.chart.data.labels.shift();
+        state.chart.data.datasets[0].data.shift();
+        state.chart.data.datasets[1].data.shift();
+      }
+
+      state.chart.data.datasets[0].borderColor = risk > 70 ? "#ff4444" : "#00ff88";
+      state.chart.update("none");
+    }
+
+    function updateThreatFeed(data) {
+      const status = String(data.status || "");
+      if (!["ALERT", "BLOCKED", "PROBING", "HONEYPOT"].includes(status)) return;
+      state.threatFeed.set(data.ip, {
+        ip: data.ip,
+        status,
+        risk: data.risk_score || 0,
+        ts: Date.now()
+      });
+      const items = Array.from(state.threatFeed.values())
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, 5);
+      state.threatFeed = new Map(items.map((x) => [x.ip, x]));
+
+      els.threatList.innerHTML = "";
+      items.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "threat-item";
+        card.innerHTML = `
+          <div class="threat-top">
+            <strong>${item.ip}</strong>
+            <span class="status ${statusClass(item.status)}">${item.status}</span>
+          </div>
+          <div style="margin-top:4px;font-size:12px;">Risk: ${fmt(item.risk)}</div>
+          <div class="ago">${agoLabel(item.ts)}</div>
+        `;
+        els.threatList.appendChild(card);
+      });
+    }
+
+    function renderReports() {
+      const items = Array.from(state.reports.values()).sort((a, b) => b.ts - a.ts);
+      if (!items.length) {
+        els.reportList.innerHTML = `<div class="empty">Waiting for threat activity...</div>`;
+        return;
+      }
+      els.reportList.innerHTML = "";
+      items.forEach((r) => {
+        const el = document.createElement("div");
+        el.className = `report ${borderClass(r.status)}`;
+        el.innerHTML = `
+          <div class="report-head">
+            <strong>${r.ip}</strong>
+            <span class="status ${statusClass(r.status)}">${r.status}</span>
+            <span class="pill">Risk ${fmt(r.risk_score)}</span>
+            <span class="pill">ISO ${fmt(r.iso_score)}</span>
+            <span class="pill">LSTM ${fmt(r.lstm_score)}</span>
+            <span class="pill">Probe ${fmt(r.probe_score)}</span>
+            <span class="pill">${r.attack_type || "Behavioral_Anomaly"}</span>
+            <span class="pill">${new Date(r.ts).toLocaleTimeString()}</span>
+          </div>
+          <div class="report-text">${r.narration || ""}</div>
+        `;
+        els.reportList.appendChild(el);
+      });
+    }
+
+    function updateLatency() {
+      const ts = Date.now();
+      state.eventTimes.push(ts);
+      if (state.eventTimes.length > 2) state.eventTimes.shift();
+      if (state.eventTimes.length === 2) {
+        const ms = Math.max(1, state.eventTimes[1] - state.eventTimes[0]);
+        els.latency.textContent = `${ms} ms`;
+      }
+    }
+
+    function onThreatUpdate(payload) {
+      state.totalEvents += 1;
+      const status = String(payload.status || "NORMAL");
+      if (status === "BLOCKED") state.blocked += 1;
+      if (status === "ALERT") state.alerts += 1;
+      if (status === "NORMAL") state.normal += 1;
+      if (status === "HONEYPOT") state.honeypot += 1;
+
+      state.confidences.push(Number(payload.confidence || 0));
+      if (state.confidences.length > 10) state.confidences.shift();
+
+      updateStats();
+      updateIpTable(payload);
+      updateChart(payload);
+      updateThreatFeed(payload);
+      updateLatency();
+    }
+
+    function onActionTaken(payload) {
+      const ip = payload.ip || "-";
+      const action = payload.action || "ACTION";
+      const reason = payload.reason || "-";
+      let line = `[${nowTime()}] `;
+      let css = "";
+      let ipAction = action;
+
+      if (action.includes("IP_BLOCKED")) {
+        line += `🔴 IP_BLOCKED → ${ip} | Reason: ${reason} | Session Invalidated`;
+        css = "a-red";
+        ipAction = "IP Blocked + Session Invalidated";
+      } else if (action.includes("CAPTCHA_REQUIRED")) {
+        line += `🟡 CAPTCHA_REQUIRED → ${ip} | Rate limited 60s`;
+        css = "a-yellow";
+        ipAction = "CAPTCHA Required + Rate Limited 60s";
+      } else if (action.includes("SOFT_RATE_LIMIT")) {
+        line += `🟠 SOFT_RATE_LIMIT → ${ip} | Increased logging active`;
+        css = "a-orange";
+        ipAction = "Rate Limited 30s + Increased Logging";
+      } else if (action.includes("HONEYPOT_BLOCK")) {
+        line += `🪤 HONEYPOT_BLOCK → ${ip} | Trap triggered`;
+        css = "a-gold";
+        ipAction = "Honeypot Instant Block";
+      } else {
+        line += `${action} → ${ip} | Reason: ${reason}`;
+      }
+
+      prependAction(line, css);
+      state.ipActions.set(ip, ipAction);
+      if (state.ipRows.has(ip)) {
+        const row = state.ipRows.get(ip);
+        row.action = ipAction;
+        state.ipRows.set(ip, row);
+        updateIpTable(row);
+      }
+    }
+
+    function onLlmReady(payload) {
+      const ip = payload.ip;
+      if (!ip) return;
+      const existing = state.reports.get(ip) || {};
+      state.reports.set(ip, {
+        ...existing,
+        ip,
+        status: payload.status || existing.status || "ALERT",
+        risk_score: payload.risk_score ?? existing.risk_score ?? 0,
+        iso_score: payload.iso_score ?? existing.iso_score ?? 0,
+        lstm_score: payload.lstm_score ?? existing.lstm_score ?? 0,
+        probe_score: payload.probe_score ?? existing.probe_score ?? 0,
+        attack_type: payload.attack_type || existing.attack_type || "Behavioral_Anomaly",
+        narration: payload.narration || existing.narration || "",
+        ts: Date.now()
+      });
+      renderReports();
+    }
+
+    async function pollHealth() {
+      try {
+        const res = await fetch("http://localhost:5000/api/health");
+        const h = await res.json();
+        els.mIso.textContent = h.isolation_forest === "active" ? "🟢 Active" : "🔴 Inactive";
+        els.mLstm.textContent = h.lstm_autoencoder === "active" ? "🟢 Active" : "🔴 Inactive";
+        els.mProbe.textContent = h.probing_detector === "active" ? "🟢 Active" : "🔴 Inactive";
+        els.mHoney.textContent = h.honeypot_engine === "active" ? "🟢 Active" : "🔴 Inactive";
+      } catch {
+        els.mIso.textContent = "🔴 Inactive";
+        els.mLstm.textContent = "🔴 Inactive";
+        els.mProbe.textContent = "🔴 Inactive";
+        els.mHoney.textContent = "🔴 Inactive";
+      }
+    }
+
+    async function bootstrap() {
+      try { await fetch("http://localhost:5000/api/clear"); } catch {}
+      try {
+        const res = await fetch("http://localhost:5000/api/alerts");
+        const alerts = await res.json();
+        (Array.isArray(alerts) ? alerts : []).forEach((a) => {
+          onThreatUpdate({
+            ip: a.ip,
+            risk_score: a.risk_score,
+            iso_score: a.iso_score,
+            lstm_score: a.lstm_score,
+            probe_score: a.probe_score,
+            confidence: a.confidence,
+            attack_type: a.attack_type,
+            status: a.status
+          });
+        });
+      } catch {}
+      await pollHealth();
+    }
+
+    initChart();
+    bootstrap();
+
+    const socket = io("http://localhost:5000", { transports: ["websocket", "polling"] });
+    socket.on("connect", () => setLive(true));
+    socket.on("disconnect", () => setLive(false));
+    socket.on("threat_update", onThreatUpdate);
+    socket.on("action_taken", onActionTaken);
+    socket.on("llm_ready", onLlmReady);
+
+    setInterval(pollHealth, 5000);
+    setInterval(() => {
+      Array.from(state.threatFeed.values()).forEach((item) => (item.ts = item.ts));
+      const items = Array.from(state.threatFeed.values())
+        .sort((a, b) => b.ts - a.ts)
+        .slice(0, 5);
+      if (items.length) {
+        els.threatList.querySelectorAll(".ago").forEach((el, idx) => {
+          if (items[idx]) el.textContent = agoLabel(items[idx].ts);
+        });
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
