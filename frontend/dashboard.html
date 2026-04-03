@@ -284,6 +284,9 @@
   </div>
 
   <script>
+    const riskScoreData = [];
+    const lstmScoreData = [];
+
     const state = {
       totalEvents: 0,
       blocked: 0,
@@ -357,19 +360,19 @@
           datasets: [
             {
               label: "Risk Score",
-              data: [],
-              borderColor: "#00ff88",
-              pointRadius: 2,
-              borderWidth: 2,
-              tension: 0.25
+              data: riskScoreData,
+              borderColor: "#ff4444",
+              backgroundColor: "rgba(255, 68, 68, 0.1)",
+              tension: 0.3,
+              pointRadius: 3
             },
             {
               label: "LSTM Score",
-              data: [],
-              borderColor: "#a855f7",
-              pointRadius: 1.8,
-              borderWidth: 1.8,
-              tension: 0.25
+              data: lstmScoreData,
+              borderColor: "#9b59b6",
+              backgroundColor: "rgba(155, 89, 182, 0.1)",
+              tension: 0.3,
+              pointRadius: 3
             }
           ]
         },
@@ -455,17 +458,20 @@
       const lstm = Number(data.lstm_score || 0);
 
       state.chart.data.labels.push(seq);
-      state.chart.data.datasets[0].data.push(risk);
-      state.chart.data.datasets[1].data.push(lstm);
+      riskScoreData.push(risk);
+      lstmScoreData.push(lstm);
 
       if (state.chart.data.labels.length > 50) {
         state.chart.data.labels.shift();
-        state.chart.data.datasets[0].data.shift();
-        state.chart.data.datasets[1].data.shift();
+      }
+      if (riskScoreData.length > 50) {
+        riskScoreData.shift();
+      }
+      if (lstmScoreData.length > 50) {
+        lstmScoreData.shift();
       }
 
-      state.chart.data.datasets[0].borderColor = risk > 70 ? "#ff4444" : "#00ff88";
-      state.chart.update("none");
+      state.chart.update();
     }
 
     function updateThreatFeed(data) {

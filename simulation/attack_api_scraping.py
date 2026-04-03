@@ -39,10 +39,21 @@ def run():
             "session_entropy": 0.95,
             "device_change_score": 0.2,
         }
-        base.send_event(event)
+        result = base.send_event(event)
+        status = result.get("status", "ERROR")
+        print(
+            f"[{sent}] {TARGET_IP} -> {status} | "
+            f"risk_score: {result.get('risk_score', '?')}"
+        )
         if sent > 5:
             try:
                 requests.get("http://localhost:5000/api/v1/internal/users", timeout=5)
             except Exception:
                 pass
         time.sleep(0.8)
+
+
+if __name__ == "__main__":
+    print(f"[+] Starting API Scraping + Honeypot attack on {TARGET_IP}")
+    print("[+] Press Ctrl+C to stop")
+    run()

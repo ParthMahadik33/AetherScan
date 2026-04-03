@@ -15,6 +15,7 @@ TARGET_IP = "104.21.45.67"
 
 def run():
     base.clear_stop(ATTACK_TYPE)
+    event_count = 0
     while not base.should_stop(ATTACK_TYPE):
         try:
             requests.post(
@@ -49,5 +50,17 @@ def run():
             "session_entropy": 0.9,
             "device_change_score": 0.35,
         }
-        base.send_event(event)
+        result = base.send_event(event)
+        event_count += 1
+        status = result.get("status", "ERROR")
+        print(
+            f"[{event_count}] {TARGET_IP} -> {status} | "
+            f"risk_score: {result.get('risk_score', '?')}"
+        )
         time.sleep(2)
+
+
+if __name__ == "__main__":
+    print(f"[+] Starting LLM Injection attack on {TARGET_IP}")
+    print("[+] Press Ctrl+C to stop")
+    run()

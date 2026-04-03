@@ -13,6 +13,7 @@ TARGET_IP = "45.142.212.100"
 
 def run():
     base.clear_stop(ATTACK_TYPE)
+    event_count = 0
     while not base.should_stop(ATTACK_TYPE):
         failure_rate = 0.4
         event = {
@@ -35,5 +36,17 @@ def run():
             "session_entropy": 0.35,
             "device_change_score": 0.12,
         }
-        base.send_event(event)
+        result = base.send_event(event)
+        event_count += 1
+        status = result.get("status", "ERROR")
+        print(
+            f"[{event_count}] {TARGET_IP} -> {status} | "
+            f"risk_score: {result.get('risk_score', '?')}"
+        )
         time.sleep(1)
+
+
+if __name__ == "__main__":
+    print(f"[+] Starting Headless Browser Bot attack on {TARGET_IP}")
+    print("[+] Press Ctrl+C to stop")
+    run()

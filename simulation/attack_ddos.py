@@ -14,6 +14,7 @@ TARGET_IP = "10.0.0.1-10.0.0.20"
 def run():
     base.clear_stop(ATTACK_TYPE)
     current = 1
+    event_count = 0
     while not base.should_stop(ATTACK_TYPE):
         ip = f"10.0.0.{current}"
         current = 1 if current >= 20 else current + 1
@@ -38,5 +39,17 @@ def run():
             "session_entropy": 0.5,
             "device_change_score": 0.1,
         }
-        base.send_event(event)
+        result = base.send_event(event)
+        event_count += 1
+        status = result.get("status", "ERROR")
+        print(
+            f"[{event_count}] {ip} -> {status} | "
+            f"risk_score: {result.get('risk_score', '?')}"
+        )
         time.sleep(0.2)
+
+
+if __name__ == "__main__":
+    print(f"[+] Starting DDoS Flood attack (rotating {TARGET_IP})")
+    print("[+] Press Ctrl+C to stop")
+    run()

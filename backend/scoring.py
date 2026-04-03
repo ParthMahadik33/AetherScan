@@ -92,13 +92,19 @@ ip_sequences = {}
 
 
 def score_isolation_forest(features_dict):
-    vector = np.array([features_dict[name] for name in FEATURES], dtype=np.float32).reshape(1, -1)
-    scaled = iso_scaler.transform(vector)
-    raw_score = float(iso_forest.decision_function(scaled)[0])
-
-    normalized = 100.0 * (0.1 - raw_score) / (0.1 - (-0.2))
-    normalized = float(np.clip(normalized, 0.0, 100.0))
-    return normalized
+    vec = np.array([features_dict[f] for f in FEATURES]).reshape(1, -1)
+    scaled = iso_scaler.transform(vec)
+    raw = iso_forest.decision_function(scaled)[0]
+    print(f"[ISO DEBUG] raw={raw:.4f}")
+    
+    if raw <= -0.20:
+        normalized = 100.0
+    elif raw >= 0.15:
+        normalized = 0.0
+    else:
+        normalized = (0.15 - raw) / (0.15 - (-0.20)) * 100.0
+    
+    return float(np.clip(normalized, 0, 100))
 
 
 def score_lstm(ip, features_dict):
@@ -135,33 +141,37 @@ def score_lstm(ip, features_dict):
 
 
 def compute_risk_score(ip, features_dict, probe_score=0.0):
-    iso_score = score_isolation_forest(features_dict)
-    lstm_score = score_lstm(ip, features_dict)
+    iso = score_isolation_forest(features_dict)
+    lstm = score_lstm(ip, features_dict)
+    
+    seq_len = len(ip_sequences.get(ip, []))
 
-    risk_score = (
-        (iso_score * ISO_WEIGHT)
-        + (lstm_score * LSTM_WEIGHT)
-        + (float(probe_score) * PROBE_WEIGHT)
-    )
-    risk_score = float(np.clip(risk_score, 0.0, 100.0))
-
-    if risk_score >= 85:
+    if lstm == 0.0:
+        # Dampen ISO weight for early attempts before LSTM kicks in
+        iso_weight = min(0.80, 0.40 + (seq_len / 5) * 0.40)
+        risk_score = (iso * iso_weight) + (probe_score * (1 - iso_weight))
+    else:
+        risk_score = (iso * ISO_WEIGHT) + (lstm * LSTM_WEIGHT) + (probe_score * PROBE_WEIGHT)
+    
+    risk_score = float(np.clip(risk_score, 0, 100))
+    
+    if risk_score >= 80:
         status = "BLOCKED"
-    elif risk_score >= 70:
+    elif risk_score >= 65:
         status = "ALERT"
-    elif risk_score >= 50:
+    elif risk_score >= 45:
         status = "MONITORING"
     else:
         status = "NORMAL"
-
-    confidence = round(min(100.0, risk_score + 10.0), 1)
-
+    
+    confidence = round(min(100, risk_score + 10), 1)
+    
     return {
         "ip": ip,
         "risk_score": risk_score,
-        "iso_score": iso_score,
-        "lstm_score": lstm_score,
+        "iso_score": iso,
+        "lstm_score": lstm,
         "probe_score": float(probe_score),
         "confidence": confidence,
-        "status": status,
+        "status": status
     }

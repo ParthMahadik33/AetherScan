@@ -65,5 +65,16 @@ def run():
             "session_entropy": state["session_entropy"],
             "device_change_score": state["device_change_score"],
         }
-        base.send_event(event)
+        result = base.send_event(event)
+        status = result.get("status", "ERROR")
+        print(
+            f"[{event_count}] {TARGET_IP} -> {status} | "
+            f"risk_score: {result.get('risk_score', '?')}"
+        )
         time.sleep(2)
+
+
+if __name__ == "__main__":
+    print(f"[+] Starting AI Adaptive Bot attack on {TARGET_IP}")
+    print("[+] Press Ctrl+C to stop")
+    run()

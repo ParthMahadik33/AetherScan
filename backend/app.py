@@ -2,9 +2,10 @@ import datetime
 import json
 import threading
 import time
+import warnings
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, request
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
@@ -27,8 +28,18 @@ except ImportError:
 load_dotenv()
 
 app = Flask(__name__)
+import logging
+logging.getLogger("werkzeug").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=".*Eventlet is deprecated.*")
+
 CORS(app, resources={r"*": {"origins": "*"}})
 socketio = SocketIO(app, async_mode="eventlet", cors_allowed_origins="*")
+
+
+@app.route("/api/test", methods=["GET", "POST"])
+def test_route():
+    return jsonify({"status": "ok"})
+
 
 database.init_db()
 
@@ -63,6 +74,19 @@ def derive_attack_type(features):
 
 def execute_actions(ip, status, risk_score, attack_type):
     current_time = time.time()
+
+    if attack_type == "Credential_Stuffing" and status in ("ALERT", "BLOCKED"):
+        # Invalidate any sessions that were created from this IP
+        ip_session_store[ip] = {
+            "invalidated": True,
+            "reason": "Spray attack detected — all sessions from this IP invalidated",
+            "force_reauth": True
+        }
+        socketio.emit("action_taken", {
+            "ip": ip,
+            "action": "ALL_SESSIONS_INVALIDATED",
+            "reason": "Password spray detected — forcing re-authentication on all accounts accessed from this IP",
+        })
 
     if status == "BLOCKED" or risk_score >= 85:
         blocked_ips.add(ip)
@@ -205,30 +229,16 @@ def api_event():
     success = int(bool(payload.get("success", 0)))
     features = parse_features(payload)
 
-    if ip in blocked_ips:
-        return (
-            jsonify(
-                {
-                    "status": "BLOCKED",
-                    "action": "REQUEST_REJECTED",
-                    "risk_score": 100,
-                }
-            ),
-            403,
-        )
-
     expire_ts = rate_limited_ips.get(ip)
     if expire_ts:
         remaining = int(max(0, expire_ts - time.time()))
         if remaining > 0:
             return (
-                jsonify(
-                    {
-                        "status": "RATE_LIMITED",
-                        "action": "SLOW_DOWN",
-                        "retry_after": remaining,
-                    }
-                ),
+                jsonify({
+                    "status": "RATE_LIMITED",
+                    "action": "SLOW_DOWN",
+                    "retry_after": remaining,
+                }),
                 429,
             )
         rate_limited_ips.pop(ip, None)
@@ -239,6 +249,15 @@ def api_event():
     score_result = scoring.compute_risk_score(ip, features, probe_score=probe_score)
     attack_type = derive_attack_type(features)
     status = score_result["status"]
+
+    if ip in blocked_ips:
+        socketio.emit("threat_update", {
+            "ip": ip, "status": "BLOCKED", "risk_score": 100,
+            "iso_score": 0, "lstm_score": 0, "probe_score": 0,
+            "confidence": 100, "attack_type": "Known_Blocked_IP",
+            "timestamp": now_iso()
+        })
+        return jsonify({"status": "BLOCKED", "action": "REQUEST_REJECTED", "risk_score": 100}), 403
 
     if probe_result.get("is_probing") and status in {"NORMAL", "MONITORING"}:
         status = "PROBING"
@@ -372,36 +391,34 @@ def api_clear():
     return jsonify({"status": "cleared"}), 200
 
 
-@app.post("/api/attack/start")
+@app.route("/api/attack/start", methods=["POST", "OPTIONS"])
+@app.route("/api/attack/start/", methods=["POST", "OPTIONS"])
 def api_attack_start():
-    payload = request.get_json(silent=True) or {}
-    attack_type = str(payload.get("attack_type", "")).strip()
-    if not attack_type:
-        return jsonify({"status": "error", "message": "attack_type is required"}), 400
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
 
-    with attack_lock:
-        result = attack_launcher.start_attack(attack_type, active_attacks)
-    status_code = 200 if result.get("status") in {"started", "already_running"} else 404
-    return jsonify(result), status_code
+    data = request.get_json(silent=True) or {}
+    attack_type = data.get("attack_type")
+    print(f"[api_attack_start] attack_type={attack_type}")
+    result = attack_launcher.start_attack(attack_type, active_attacks)
+    return jsonify(result)
 
 
-@app.post("/api/attack/stop")
+@app.route("/api/attack/stop", methods=["POST", "OPTIONS"])
+@app.route("/api/attack/stop/", methods=["POST", "OPTIONS"])
 def api_attack_stop():
-    payload = request.get_json(silent=True) or {}
-    attack_type = str(payload.get("attack_type", "")).strip()
-    if not attack_type:
-        return jsonify({"status": "error", "message": "attack_type is required"}), 400
+    if request.method == "OPTIONS":
+        return jsonify({"status": "ok"}), 200
 
-    with attack_lock:
-        result = attack_launcher.stop_attack(attack_type, active_attacks)
-    return jsonify(result), 200
+    data = request.get_json(silent=True) or {}
+    attack_type = data.get("attack_type")
+    result = attack_launcher.stop_attack(attack_type, active_attacks)
+    return jsonify(result)
 
 
-@app.get("/api/attack/status")
+@app.route("/api/attack/status", methods=["GET"])
 def api_attack_status():
-    with attack_lock:
-        data = attack_launcher.get_status(active_attacks)
-    return jsonify(data), 200
+    return jsonify(attack_launcher.get_status(active_attacks))
 
 
 @app.get("/api/actions/log")
@@ -465,4 +482,4 @@ def hp_hidden_export():
 
 
 if __name__ == "__main__":
-    socketio.run(app, host="0.0.0.0", port=5000, debug=True)
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True, log_output=False)

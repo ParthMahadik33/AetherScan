@@ -21,7 +21,18 @@ ATTACK_MAP = {
 }
 
 
+def _normalize_attack_type(attack_type):
+    attack_type = str(attack_type or "").strip()
+    if attack_type.startswith("attack_"):
+        attack_type = attack_type[7:]
+    return attack_type
+
+
 def start_attack(attack_type, active_attacks: dict):
+    attack_type = _normalize_attack_type(attack_type)
+    if not attack_type:
+        return {"status": "not_found", "attack_type": attack_type}
+
     if attack_type in active_attacks:
         return {"status": "already_running"}
 
@@ -60,6 +71,7 @@ def start_attack(attack_type, active_attacks: dict):
 
 
 def stop_attack(attack_type, active_attacks: dict):
+    attack_type = _normalize_attack_type(attack_type)
     if attack_type not in active_attacks:
         return {"status": "not_running"}
 

@@ -13,6 +13,7 @@ TARGET_IP = "162.158.88.1"
 
 def run():
     base.clear_stop(ATTACK_TYPE)
+    event_count = 0
     while not base.should_stop(ATTACK_TYPE):
         failure_rate = 0.2
         event = {
@@ -35,5 +36,17 @@ def run():
             "session_entropy": 0.75,
             "device_change_score": random.uniform(0.7, 0.95),
         }
-        base.send_event(event)
+        result = base.send_event(event)
+        event_count += 1
+        status = result.get("status", "ERROR")
+        print(
+            f"[{event_count}] {TARGET_IP} -> {status} | "
+            f"risk_score: {result.get('risk_score', '?')}"
+        )
         time.sleep(1.5)
+
+
+if __name__ == "__main__":
+    print(f"[+] Starting Deepfake Identity attack on {TARGET_IP}")
+    print("[+] Press Ctrl+C to stop")
+    run()

@@ -15,6 +15,7 @@ def run():
     base.clear_stop(ATTACK_TYPE)
     sequence = [10, 7, 5, 4, 3, 2, 2, 1]
     idx = 0
+    event_count = 0
     while not base.should_stop(ATTACK_TYPE):
         if idx < len(sequence):
             attempt_rate = float(sequence[idx])
@@ -47,6 +48,18 @@ def run():
             "session_entropy": 0.5,
             "device_change_score": 0.1,
         }
-        base.send_event(event)
+        result = base.send_event(event)
+        event_count += 1
+        status = result.get("status", "ERROR")
+        print(
+            f"[{event_count}] {TARGET_IP} -> {status} | "
+            f"risk_score: {result.get('risk_score', '?')}"
+        )
         idx += 1
         time.sleep(2)
+
+
+if __name__ == "__main__":
+    print(f"[+] Starting Probing Discovery attack on {TARGET_IP}")
+    print("[+] Press Ctrl+C to stop")
+    run()
