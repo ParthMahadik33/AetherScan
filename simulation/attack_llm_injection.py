@@ -3,7 +3,10 @@ import random
 
 import requests
 
-import base
+try:
+    from . import base
+except ImportError:
+    import base
 
 
 ATTACK_TYPE = "attack_llm_injection"

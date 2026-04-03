@@ -8,12 +8,20 @@ from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-import attack_launcher
-import database
-import honeypot
-import llm_narrator
-import probing_detector
-import scoring
+try:
+    from . import attack_launcher
+    from . import database
+    from . import honeypot
+    from . import llm_narrator
+    from . import probing_detector
+    from . import scoring
+except ImportError:
+    import attack_launcher
+    import database
+    import honeypot
+    import llm_narrator
+    import probing_detector
+    import scoring
 
 
 load_dotenv()

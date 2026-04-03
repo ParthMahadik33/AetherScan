@@ -277,7 +277,7 @@
     }
 
     async function callApi(path, body) {
-      const res = await fetch(path, {
+      const res = await fetch(`http://localhost:5000${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body || {})
@@ -315,7 +315,7 @@
 
     async function pollAttackStatus() {
       try {
-        const res = await fetch("/api/attack/status");
+        const res = await fetch("http://localhost:5000/api/attack/status");
         const data = await res.json();
         state.waitingLogged = false;
         const seen = new Set();

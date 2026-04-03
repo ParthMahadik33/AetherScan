@@ -1,7 +1,10 @@
 import time
 import random
 
-import base
+try:
+    from . import base
+except ImportError:
+    import base
 
 
 ATTACK_TYPE = "attack_card_testing"

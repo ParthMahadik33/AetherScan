@@ -127,7 +127,9 @@ def clear_all():
 
 
 def get_connection():
-    return sqlite3.connect(DB_PATH, row_factory=sqlite3.Row)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 init_db()

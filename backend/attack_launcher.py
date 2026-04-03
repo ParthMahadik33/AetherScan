@@ -1,22 +1,6 @@
 import importlib
 import threading
 
-from simulation import attack_ai_adaptive_bot
-from simulation import attack_api_scraping
-from simulation import attack_ato
-from simulation import attack_card_testing
-from simulation import attack_ddos
-from simulation import attack_deepfake_identity
-from simulation import attack_fast_stuffing
-from simulation import attack_headless_browser
-from simulation import attack_llm_injection
-from simulation import attack_password_spray
-from simulation import attack_probing_discovery
-from simulation import attack_session_hijack
-from simulation import attack_slow_mimicry
-from simulation import attack_synthetic_identity
-from simulation import attack_zero_day
-
 
 ATTACK_MAP = {
     "fast_stuffing": "simulation.attack_fast_stuffing",
@@ -49,8 +33,28 @@ def start_attack(attack_type, active_attacks: dict):
     module.base.clear_stop(attack_type)
     module.base.clear_stop(getattr(module, "ATTACK_TYPE", attack_type))
 
-    t = threading.Thread(target=module.run, daemon=True)
-    active_attacks[attack_type] = {"thread": t, "events_sent": 0, "module": module}
+    active_attacks[attack_type] = {
+        "thread": None,
+        "events_sent": 0,
+        "module": module,
+    }
+
+    def run_and_track():
+        original_send = module.base.send_event
+
+        def counted_send(features):
+            result = original_send(features)
+            active_attacks[attack_type]["events_sent"] += 1
+            return result
+
+        module.base.send_event = counted_send
+        try:
+            module.run()
+        finally:
+            module.base.send_event = original_send
+
+    t = threading.Thread(target=run_and_track, daemon=True)
+    active_attacks[attack_type]["thread"] = t
     t.start()
     return {"status": "started", "attack_type": attack_type}
 
