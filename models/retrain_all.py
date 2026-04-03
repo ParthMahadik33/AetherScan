@@ -11,7 +11,11 @@ from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import StandardScaler
 
 
-DATA_FILE = "models/normal_traffic.csv"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
+
+DATA_FILE = os.path.join(MODELS_DIR, "normal_traffic.csv")
 SEQUENCE_LENGTH = 20
 FEATURES = [
     "attempt_rate_30s",
@@ -45,13 +49,14 @@ def train_isolation_forest(data_df: pd.DataFrame):
     )
     iso_forest.fit(X_scaled)
 
-    os.makedirs("models", exist_ok=True)
-    with open("models/iso_scaler.pkl", "wb") as f:
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    with open(os.path.join(MODELS_DIR, "iso_scaler.pkl"), "wb") as f:
         pickle.dump(scaler, f)
-    with open("models/iso_forest.pkl", "wb") as f:
+    with open(os.path.join(MODELS_DIR, "iso_forest.pkl"), "wb") as f:
         pickle.dump(iso_forest, f)
 
     print("Isolation Forest trained and saved")
+    return scaler, X_scaled
 
 
 class LSTMAutoencoder(nn.Module):
@@ -89,12 +94,7 @@ class LSTMAutoencoder(nn.Module):
         return reconstruction
 
 
-def train_lstm_autoencoder(data_df: pd.DataFrame):
-    X = data_df[FEATURES].values
-
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
-
+def train_lstm_autoencoder(X_scaled: np.ndarray):
     # Build sequences of length SEQUENCE_LENGTH using non-overlapping windows.
     num_rows = X_scaled.shape[0]
     seqs = []
@@ -149,11 +149,11 @@ def train_lstm_autoencoder(data_df: pd.DataFrame):
     p95 = float(np.percentile(per_seq_mse, 95))
     p99 = float(np.percentile(per_seq_mse, 99))
 
-    os.makedirs("models", exist_ok=True)
-    thresholds_path = "models/lstm_thresholds.npy"
+    os.makedirs(MODELS_DIR, exist_ok=True)
+    thresholds_path = os.path.join(MODELS_DIR, "lstm_thresholds.npy")
     np.save(thresholds_path, np.array([p95, p99], dtype=np.float32))
 
-    torch.save(model.state_dict(), "models/lstm_autoencoder.pt")
+    torch.save(model.state_dict(), os.path.join(MODELS_DIR, "lstm_autoencoder.pt"))
 
     print("LSTM Autoencoder trained and saved")
     print(f"p95 threshold: {p95}, p99 threshold: {p99}")
@@ -161,8 +161,8 @@ def train_lstm_autoencoder(data_df: pd.DataFrame):
 
 def main():
     data_df = pd.read_csv(DATA_FILE)
-    train_isolation_forest(data_df)
-    train_lstm_autoencoder(data_df)
+    _, X_scaled = train_isolation_forest(data_df)
+    train_lstm_autoencoder(X_scaled)
 
 
 if __name__ == "__main__":
