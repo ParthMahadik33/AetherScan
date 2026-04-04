@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AetherSense AML Demo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --app-bg: #0A1628;
+            --atk-bg: #0A0A0A;
+            --soc-bg: #0F1117;
+            --text-main: #E2E8F0;
+            --text-muted: #94A3B8;
+            --green: #10B981;
+            --amber: #F59E0B;
+            --orange: #EA580C;
+            --red: #EF4444;
+            --blue: #3B82F6;
+            --purple: #8B5CF6;
+            --teal: #14B8A6;
+            --border: rgba(255, 255, 255, 0.1);
+            --card-bg: rgba(255, 255, 255, 0.05);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            background: #000;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+
+        .col { height: 100%; display: flex; flex-direction: column; padding: 24px; }
+        .col-app { width: 40%; background: var(--app-bg); border-right: 1px solid var(--border); }
+        .col-soc { width: 60%; background: var(--soc-bg); overflow-y: auto;}
+
+        h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;}
+        h3 { font-size: 1rem; font-weight: 600; margin-bottom: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+        /* PayVault Styles */
+        .card { background: var(--card-bg); border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; }
+        .badge.active { background: rgba(16, 185, 129, 0.2); color: var(--green); }
+        .badge.frozen { background: rgba(239, 68, 68, 0.2); color: var(--red); box-shadow: 0 0 10px rgba(239, 68, 68, 0.5); animation: pulse 2s infinite; }
+        
+        .txn-feed { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+        .txn-row { display: flex; justify-content: space-between; align-items: center; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; animation: slideIn 0.3s ease-out; }
+        .txn-row .dest { font-weight: 500; }
+        .txn-row .amt { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; }
+        .txn-status { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; padding: 2px 6px; border-radius: 4px;}
+        .st-COMPLETED { color: var(--green); text-shadow: 0 0 5px rgba(16,185,129,0.5); }
+        .st-HELD { color: var(--amber); animation: pulse 2s infinite; }
+        .st-REVERSED { color: var(--red); text-decoration: line-through; }
+
+        .app-stats { display: flex; justify-content: space-between; margin-top: 10px; font-size: 0.85rem; }
+        .app-stats div { display: flex; flex-direction: column; align-items: center; }
+        .app-stats span { font-weight: 700; font-size: 1.1rem; margin-top: 4px; font-family: 'JetBrains Mono'; }
+
+        /* SOC Styles */
+        .soc-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.85rem;}
+        .soc-table th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); color: var(--text-muted); }
+        .soc-table td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .soc-table tr { animation: fadeIn 0.3s; }
+        
+        .gauge-wrapper { position: relative; width: 150px; height: 150px; margin: 0 auto 20px; }
+        .gauge-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        .gauge-val { font-size: 2rem; font-weight: 700; line-height: 1; }
+
+        .signal-bar { display: flex; align-items: center; margin-bottom: 12px; }
+        .signal-label { width: 140px; font-size: 0.8rem; color: var(--text-muted); }
+        .signal-track { flex: 1; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; position: relative; overflow: hidden;}
+        .signal-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease-out; }
+        .bg-blue { background: var(--blue); }
+        .bg-amber { background: var(--amber); }
+        .bg-purple { background: var(--purple); }
+        .bg-teal { background: var(--teal); }
+
+        .chart-container { height: 180px; margin-top: 20px; margin-bottom: 20px; }
+
+        .threat-report { background: rgba(239, 68, 68, 0.05); border-left: 4px solid var(--red); padding: 16px; border-radius: 4px; display: none; margin-top: 20px;}
+        .threat-report h4 { color: var(--red); margin-bottom: 8px; }
+        .threat-report p { font-size: 0.85rem; line-height: 1.5; color: #E2E8F0; margin-bottom: 4px;}
+
+        .status-row { display: flex; gap: 12px; font-size: 0.75rem; color: var(--text-muted); align-items: center; margin-top: auto; padding-top: 20px;}
+        .dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; display: inline-block; }
+
+        @keyframes slideIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+    </style>
+</head>
+<body>
+
+    <!-- PayVault Column -->
+    <div class="col col-app">
+        <h2>
+            PayVault
+            <span style="font-size: 0.7rem; color: var(--green); border: 1px solid var(--green); padding: 2px 6px; border-radius: 10px;">Secured by ThreatMonitor</span>
+        </h2>
+        
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+                <div>
+                    <div style="color: var(--text-muted); font-size: 0.85rem;">Account Holder</div>
+                    <div style="font-weight: 600;">Rahul Mehta</div>
+                </div>
+                <div id="account-status-badge" class="badge active">ACTIVE</div>
+            </div>
+            <div style="font-size: 0.85rem; color: var(--text-muted);">PV-004821</div>
+            <div id="account-balance" style="font-size: 2.5rem; font-weight: 700; margin-top: 4px; font-family: 'JetBrains Mono';">₹500,000</div>
+        </div>
+
+        <h3>Recent Transactions</h3>
+        <div class="txn-feed" id="app-feed">
+            <!-- Feed items injected here -->
+        </div>
+
+        <div class="app-stats">
+            <div>
+                Total Attempted
+                <span id="stat-attempted">₹0</span>
+            </div>
+            <div>
+                Protected
+                <span id="stat-protected" style="color: var(--amber)">₹0</span>
+            </div>
+            <div>
+                Lost
+                <span style="color: var(--green)">₹0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ThreatMonitor SOC Column -->
+    <div class="col col-soc">
+        <h2>
+            <span style="display: flex; align-items: center; gap: 8px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--blue)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                ThreatMonitor AI
+            </span>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button onclick="resetDemo()" style="background:transparent; border:1px solid rgba(255,255,255,0.2); color:var(--text-muted); padding:4px 8px; border-radius:4px; cursor:pointer; font-size:0.75rem;">RESET STATE</button>
+                <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: var(--red); animation: pulse 2s infinite;">LIVE</span>
+            </div>
+        </h2>
+
+        <!-- Comparison Table -->
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th style="width: 25%">Amount</th>
+                    <th>Rule-Based System</th>
+                    <th>ThreatMonitor AI</th>
+                </tr>
+            </thead>
+            <tbody id="soc-table-body">
+                <!-- Rows injected here -->
+            </tbody>
+        </table>
+
+        <div style="display: flex; align-items: center;">
+            <div class="gauge-wrapper">
+                <canvas id="riskGauge" width="150" height="150"></canvas>
+                <div class="gauge-text">
+                    <div class="gauge-val" id="risk-val">0</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">RISK SCORE</div>
+                </div>
+            </div>
+            
+            <div style="flex: 1; padding-left: 20px;">
+                <div class="signal-bar">
+                    <div class="signal-label">Velocity</div>
+                    <div class="signal-track"><div class="signal-fill bg-blue" id="bar-velocity" style="width: 0%"></div></div>
+                </div>
+                <div class="signal-bar">
+                    <div class="signal-label">Proximity</div>
+                    <div class="signal-track"><div class="signal-fill bg-amber" id="bar-proximity" style="width: 0%"></div></div>
+                </div>
+                <div class="signal-bar">
+                    <div class="signal-label">Fan-Out</div>
+                    <div class="signal-track"><div class="signal-fill bg-purple" id="bar-fanout" style="width: 0%"></div></div>
+                </div>
+                <div class="signal-bar">
+                    <div class="signal-label">Cumulative</div>
+                    <div class="signal-track"><div class="signal-fill bg-teal" id="bar-cumulative" style="width: 0%"></div></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="riskChart"></canvas>
+        </div>
+
+        <div class="threat-report" id="threat-report">
+            <h4>⚠️ THREAT REPORT — STR AUTO-GENERATED</h4>
+            <p><strong>Account:</strong> PV-004821</p>
+            <p><strong>Pattern:</strong> Structuring confirmed</p>
+            <p><strong>Actions:</strong> All transactions reversed | Account frozen</p>
+            <p style="margin-top: 10px; font-family: 'JetBrains Mono'; font-size: 0.8rem; color: var(--text-muted);" id="threat-meta"></p>
+        </div>
+
+        <div class="status-row">
+            <div><span class="dot"></span> AML Velocity</div>
+            <div><span class="dot"></span> AML Proximity</div>
+            <div><span class="dot"></span> AML Fan-Out</div>
+            <div><span class="dot"></span> AML Cumulative</div>
+            <div style="margin-left: auto;">Inference Latency: <span style="font-family:'JetBrains Mono'; color:var(--text-main);">12ms</span></div>
+        </div>
+    </div>
+
+
+    <script>
+        const socket = io("http://localhost:5000");
+
+        // State trackers
+        let txnCount = 0;
+        let totalAttempted = 0;
+        let totalSuccessfullyMoved = 0;
+        let currentlyInEscrow = 0;
+        let netLaundered = 0;
+        let heldTxnIds = new Set();
+        let chartData = [];
+        let chartLabels = [];
+
+        // Format currency
+        const formatC = (num) => "₹" + num.toLocaleString('en-IN');
+
+        // Setup Chart
+        const ctxRisk = document.getElementById('riskChart').getContext('2d');
+        const riskChart = new Chart(ctxRisk, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'Composite Risk Score',
+                    data: chartData,
+                    borderColor: '#3B82F6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94A3B8' } },
+                    x: { grid: { display: false }, ticks: { display: false } }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // Setup Gauge
+        const drawGauge = (score) => {
+            const canvas = document.getElementById('riskGauge');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 150, 150);
+            
+            ctx.beginPath();
+            ctx.arc(75, 75, 65, 0.75 * Math.PI, 2.25 * Math.PI);
+            ctx.lineWidth = 12;
+            ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            const endAngle = 0.75 * Math.PI + (1.5 * Math.PI * (score / 100));
+            
+            let color = '#10B981';
+            if (score > 30) color = '#F59E0B';
+            if (score > 55) color = '#EA580C';
+            if (score >= 75) color = '#EF4444';
+
+            if (score > 0) {
+                ctx.beginPath();
+                ctx.arc(75, 75, 65, 0.75 * Math.PI, endAngle);
+                ctx.lineWidth = 12;
+                ctx.strokeStyle = color;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+
+            document.getElementById('risk-val').textContent = score;
+            document.getElementById('risk-val').style.color = color;
+            
+            // update chart line color based on latest
+            riskChart.data.datasets[0].borderColor = color;
+            riskChart.data.datasets[0].backgroundColor = color.replace(')', ', 0.1)').replace('rgb', 'rgba');
+        };
+        drawGauge(0);
+
+
+        socket.on("connect", () => {
+             console.log("Connected to backend");
+        });
+
+        // Main event listener
+        socket.on("aml_update", (data) => {
+            handleTransaction(data);
+        });
+
+        socket.on("aml_threat_update", (data) => {
+            if(data.action === "reverse_all") {
+                // UI sweep for reversed state
+                document.getElementById('account-status-badge').className = "badge frozen";
+                document.getElementById('account-status-badge').textContent = "FROZEN";
+                
+                // Sweep feeds
+                document.querySelectorAll('.st-HELD').forEach(el => {
+                    el.className = "txn-status st-REVERSED";
+                    el.textContent = "REVERSED";
+                });
+                
+                // Show Threat Report
+                document.getElementById('threat-report').style.display = "block";
+                document.getElementById('threat-meta').textContent = `${txnCount} transactions | Protected: ${formatC(Math.abs(totalAttempted - totalSuccessfullyMoved))}`;
+                
+                // Adjust stats locally
+                currentlyInEscrow = 0;
+            }
+        });
+
+
+        function handleTransaction(data) {
+            txnCount++;
+            totalAttempted += data.amount;
+
+            if (data.status === "COMPLETED") {
+                totalSuccessfullyMoved += data.amount;
+            } else if (data.status === "HELD") {
+                currentlyInEscrow += data.amount;
+            } else if (data.status === "REVERSED") {
+                // Was reversed directly
+            }
+
+            updateStats();
+
+            // 1. Update Columns
+            addToAppFeed(data);
+
+            // 2. Update SOC Column
+            addToSocTable(data);
+            drawGauge(data.risk_score);
+            
+            document.getElementById('bar-velocity').style.width = data.velocity_score + '%';
+            document.getElementById('bar-proximity').style.width = data.proximity_score + '%';
+            document.getElementById('bar-fanout').style.width = data.fanout_score + '%';
+            document.getElementById('bar-cumulative').style.width = data.cumulative_score + '%';
+
+            // Chart
+            chartLabels.push(txnCount);
+            chartData.push(data.risk_score);
+            if (chartLabels.length > 20) {
+                chartLabels.shift();
+                chartData.shift();
+            }
+            riskChart.update();
+        }
+
+        function addToAppFeed(data) {
+            const feed = document.getElementById('app-feed');
+            const row = document.createElement('div');
+            row.className = 'txn-row';
+            row.innerHTML = `
+                <div>
+                    <div class="dest">${data.recipient_name}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top:2px;">Just now</div>
+                </div>
+                <div style="display:flex; flex-direction:column; align-items:flex-end;">
+                    <div class="amt">${formatC(data.amount)}</div>
+                    <div class="txn-status st-${data.status}">${data.status}</div>
+                </div>
+            `;
+            feed.insertBefore(row, feed.firstChild);
+            if (feed.children.length > 15) feed.removeChild(feed.lastChild);
+        }
+
+        function addToSocTable(data) {
+            const body = document.getElementById('soc-table-body');
+            const tr = document.createElement('tr');
+            
+            let aiColor = "var(--green)";
+            if (data.risk_score > 30) aiColor = "var(--amber)";
+            if (data.risk_score > 55) aiColor = "var(--orange)";
+            if (data.risk_score >= 75) aiColor = "var(--red)";
+
+            tr.innerHTML = `
+                <td style="font-family:'JetBrains Mono'">${formatC(data.amount)}</td>
+                <td style="color:var(--green)">✓ ALLOWED</td>
+                <td style="color:${aiColor}; font-weight:600;">⚠️ FLAG (${data.risk_score}) / ${data.action.toUpperCase()}</td>
+            `;
+            body.insertBefore(tr, body.firstChild);
+            if (body.children.length > 8) body.removeChild(body.lastChild);
+        }
+
+        function updateStats() {
+            document.getElementById('account-balance').textContent = formatC(500000 - totalAttempted + (totalAttempted - totalSuccessfullyMoved - currentlyInEscrow));
+            
+            document.getElementById('stat-attempted').textContent = formatC(totalAttempted);
+            document.getElementById('stat-protected').textContent = formatC(totalAttempted - totalSuccessfullyMoved - currentlyInEscrow);
+
+        }
+
+
+        // API Actions
+        function resetDemo() {
+            fetch("http://localhost:5000/api/aml/reset", { method: "POST" }).then(() => {
+                location.reload();
+            });
+        }
+    </script>
+</body>
+</html>

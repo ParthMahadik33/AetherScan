@@ -16,6 +16,8 @@ try:
     from . import llm_narrator
     from . import probing_detector
     from . import scoring
+    from . import aml_scorer
+    from . import transaction_db
 except ImportError:
     import attack_launcher
     import database
@@ -23,6 +25,8 @@ except ImportError:
     import llm_narrator
     import probing_detector
     import scoring
+    import aml_scorer
+    import transaction_db
 
 
 load_dotenv()
@@ -42,6 +46,8 @@ def test_route():
 
 
 database.init_db()
+transaction_db.init_db()
+attack_launcher.ATTACK_MAP["smurfing"] = "simulation.attack_smurfing"
 
 
 blocked_ips = set()
@@ -497,6 +503,122 @@ def hp_debug_login():
 @app.route("/api/v1/hidden/export", methods=["GET"])
 def hp_hidden_export():
     return _handle_honeypot("/api/v1/hidden/export")
+
+
+@app.route("/api/transaction", methods=["POST"])
+def api_transaction():
+    data = request.get_json(silent=True) or {}
+    account_id = data.get("account_id")
+    amount = data.get("amount")
+    recipient_id = data.get("recipient_id")
+    recipient_name = data.get("recipient_name")
+    timestamp = data.get("timestamp", now_iso())
+
+    score_result = aml_scorer.score_transaction(account_id, amount, recipient_id, timestamp)
+    
+    status = score_result["status"]
+    action = score_result["action"]
+    
+    # Save to DB
+    txn_data = {
+        "account_id": account_id,
+        "recipient_id": recipient_id,
+        "recipient_name": recipient_name,
+        "amount": amount,
+        "timestamp": timestamp,
+        "status": status if action != "hold" else "HELD",
+        "risk_score": score_result["risk_score"],
+        "velocity_score": score_result["velocity_score"],
+        "proximity_score": score_result["proximity_score"],
+        "fanout_score": score_result["fanout_score"],
+        "cumulative_score": score_result["cumulative_score"]
+    }
+    
+    if action == "reverse_all":
+        txn_data["status"] = "REVERSED"
+        
+    txn_id = transaction_db.insert_transaction(txn_data)
+    
+    if action == "hold":
+        transaction_db.add_to_escrow(txn_id, account_id, amount)
+    elif action == "reverse_all":
+        transaction_db.resolve_escrow(account_id, "REVERSED")
+        # Update current also if it was previously set. 
+        socketio.emit("aml_threat_update", {
+            "account_id": account_id,
+            "action": "reverse_all",
+            "message": f"Account {account_id} blocked. All holdings reversed."
+        })
+        # Record AML Alert
+        transaction_db.insert_aml_alert({
+            "account_id": account_id,
+            "risk_score": score_result["risk_score"],
+            "status": "BLOCKED",
+            "action_taken": "reverse_all",
+            "signal_breakdown": score_result,
+            "narrative": f"Structuring confirmed. Account frozen."
+        })
+    elif status == "ALERT" and action == "hold":
+        transaction_db.insert_aml_alert({
+            "account_id": account_id,
+            "risk_score": score_result["risk_score"],
+            "status": "ALERT",
+            "action_taken": "hold",
+            "signal_breakdown": score_result,
+            "narrative": f"Suspicious transaction held in escrow."
+        })
+
+    # Prepare return and emit
+    res = {
+        "transaction_id": txn_id,
+        "account_id": account_id,
+        "amount": amount,
+        "recipient_name": recipient_name,
+        "status": "HELD" if action == "hold" else ("REVERSED" if action == "reverse_all" else "COMPLETED"),
+        "action": action,
+        "risk_score": score_result["risk_score"],
+        "velocity_score": score_result["velocity_score"],
+        "proximity_score": score_result["proximity_score"],
+        "fanout_score": score_result["fanout_score"],
+        "cumulative_score": score_result["cumulative_score"],
+        "narrative": "Pattern anomalous." if score_result["risk_score"] > 55 else "",
+        "timestamp": timestamp
+    }
+    
+    socketio.emit("aml_update", res)
+    return jsonify(res), 200
+
+@app.route("/api/transactions/<account_id>", methods=["GET"])
+def api_transactions(account_id):
+    txns = transaction_db.get_transactions(account_id, limit=20)
+    return jsonify(txns), 200
+
+@app.route("/api/aml/alerts", methods=["GET"])
+def api_aml_alerts():
+    alerts = transaction_db.get_aml_alerts(limit=50)
+    return jsonify(alerts), 200
+
+@app.route("/api/aml/account/<account_id>", methods=["GET"])
+def api_aml_account(account_id):
+    txns = transaction_db.get_transactions(account_id, limit=1000)
+    total_attempted = sum(t["amount"] for t in txns)
+    held_txns = [t for t in txns if t["status"] == "HELD"]
+    reversed_txns = [t for t in txns if t["status"] == "REVERSED"]
+    total_protected = sum(t["amount"] for t in reversed_txns) + sum(t["amount"] for t in held_txns)
+    balance = 500000 - total_attempted + total_protected
+    is_blocked = account_id in aml_scorer.blocked_accounts
+    return jsonify({
+        "balance": balance,
+        "blocked": is_blocked,
+        "total_attempted": total_attempted,
+        "total_protected": total_protected
+    }), 200
+
+@app.route("/api/aml/reset", methods=["POST"])
+def api_aml_reset():
+    aml_scorer.reset_state()
+    transaction_db.clear_db()
+    return jsonify({"status": "cleared"}), 200
 
 
 if __name__ == "__main__":
