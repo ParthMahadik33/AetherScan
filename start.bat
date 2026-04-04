@@ -19,6 +19,9 @@ start "" "frontend\payvault.html"
 timeout /t 1 /nobreak > nul
 echo [Optional] Opening AML Attack Console...
 start "" "frontend\payvault_attacker.html"
+timeout /t 1 /nobreak > nul
+echo [Optional] Opening Identity Fraud Demo...
+start "" "frontend\identity_attack.html"
 echo.
 echo AetherSense AI is running on http://localhost:5000
 echo Press any key to exit this launcher...

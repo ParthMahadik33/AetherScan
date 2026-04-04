@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Identity Fraud Simulation | AetherSense AI</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.1/socket.io.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --app-bg: #0A1628;
+            --atk-bg: #000000;
+            --soc-bg: #111827;
+            --text-main: #E2E8F0;
+            --text-muted: #94A3B8;
+            --blue: #3B82F6;
+            --indigo: #6366F1;
+            --green: #10B981;
+            --amber: #F59E0B;
+            --orange: #EA580C;
+            --red: #EF4444;
+            --purple: #8B5CF6;
+            --border: rgba(255, 255, 255, 0.1);
+            --card-bg: rgba(255, 255, 255, 0.05);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            color: var(--text-main);
+            background: #000;
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+
+        .col { height: 100%; display: flex; flex-direction: column; padding: 24px; border-right: 1px solid var(--border); overflow-y: auto;}
+        .col-app { width: 30%; background: var(--app-bg); }
+        .col-atk { width: 35%; background: var(--atk-bg); }
+        .col-soc { width: 35%; background: var(--soc-bg); border-right: none;}
+
+        h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;}
+        h3 { font-size: 1rem; font-weight: 600; margin-bottom: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+        .card { background: var(--card-bg); border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05); }
+
+        .badge { font-size: 0.75rem; font-weight: 700; padding: 4px 10px; border-radius: 12px; display: inline-block; letter-spacing: 0.05em;}
+        .b-green { background: rgba(16, 185, 129, 0.2); color: var(--green); border: 1px solid rgba(16,185,129,0.3);}
+        .b-amber { background: rgba(245, 158, 11, 0.2); color: var(--amber); border: 1px solid rgba(245,158,11,0.3);}
+        .b-red { background: rgba(239, 68, 68, 0.2); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .pulsing { animation: pulse 2s infinite; }
+
+        /* PayVault Styles */
+        .pv-form-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.9rem;}
+        .pv-form-label { color: var(--text-muted); }
+        .pv-feed { display: flex; flex-direction: column; gap: 8px;}
+        .pv-feed-row { padding: 10px; background: rgba(0,0,0,0.2); border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;}
+
+        .pv-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: auto; padding-top: 20px; border-top: 1px solid var(--border);}
+        .pv-stats div { display: flex; flex-direction: column; }
+        .pv-stats span { font-weight: 700; font-size: 1.1rem; margin-top: 4px; font-family: 'JetBrains Mono'; }
+
+        /* Attacker Console Styles */
+        .atk-btn { border: none; padding: 12px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: all 0.2s; width: 100%; margin-bottom: 10px; color: white; display: flex; justify-content: center; align-items: center; gap: 8px;}
+        .btn-launch { background: var(--red); box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+        .btn-launch:active { transform: scale(0.98); }
+        .btn-stop { background: #333; }
+        .btn-reset { background: transparent; border: 1px solid var(--border); }
+        .btn-reset:hover { background: rgba(255,255,255,0.05); }
+
+        .terminal { background: #000; border: 1px solid #333; border-radius: 8px; height: 300px; padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; overflow-y: auto; margin-bottom: 20px; color: #A3A3A3; line-height: 1.5; }
+        .terminal-line { margin-bottom: 4px; animation: fadeIn 0.2s; }
+        .tl-green { color: var(--green); }
+        .tl-amber { color: var(--amber); }
+        .tl-orange { color: var(--orange); }
+        .tl-red { color: var(--red); text-shadow: 0 0 5px rgba(239,68,68,0.5); }
+
+        .atk-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .atk-stat-box { background: rgba(255,0,0,0.05); border: 1px solid rgba(239,68,68,0.2); padding: 12px; border-radius: 8px; }
+        .atk-stat-box span { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+        .atk-stat-box strong { font-family: 'JetBrains Mono'; font-size: 1.1rem; }
+
+        /* SOC Styles */
+        .soc-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.85rem;}
+        .soc-table th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); color: var(--text-muted); font-weight: 600;}
+        .soc-table td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+
+        .gauge-container { display: flex; justify-content: space-around; margin-bottom: 24px; text-align: center;}
+        .gauge { position: relative; width: 100px; height: 100px; }
+        .gauge svg { transform: rotate(-90deg); width: 100%; height: 100%; }
+        .gauge circle { fill: none; stroke-width: 8; stroke-linecap: round; }
+        .gauge-bg { stroke: rgba(255,255,255,0.1); }
+        .gauge-val { stroke: var(--green); stroke-dasharray: 251.2; stroke-dashoffset: 251.2; transition: stroke-dashoffset 0.5s ease-out, stroke 0.5s ease; }
+        .gauge-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-family: 'JetBrains Mono'; font-size: 1.25rem; font-weight: 700; }
+        .gauge-label { margin-top: 8px; font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;}
+
+        .signal-bars { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
+        .sb-row { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px;}
+        .sb-bar-bg { width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; }
+        .sb-bar-fill { height: 100%; width: 0%; border-radius: 3px; transition: width 0.5s ease; }
+
+        .collision-viz { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 20px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px;}
+        .device-node { width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,0.2); transition: all 0.3s;}
+        .device-node.active { background: var(--green); }
+        .device-node.collision { background: var(--red); box-shadow: 0 0 8px rgba(239,68,68,0.5); }
+
+        .threat-report { border-left: 4px solid var(--red); display: none;}
+
+        .model-status { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border);}
+        .ms-indicator { display: flex; align-items: center; gap: 4px; }
+        .ms-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 5px var(--green); }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    </style>
+</head>
+<body>
+
+    <!-- PayVault Column -->
+    <div class="col col-app">
+        <h2>
+            <span style="font-weight: 700; color: #fff;">PayVault<span style="color: var(--blue)">.</span></span>
+            <span class="badge" style="background: rgba(59, 130, 246, 0.2); color: var(--blue);">BNPL by ThreatMonitor</span>
+        </h2>
+
+        <h3>Live Application Queue</h3>
+        <div class="card" id="active-app-card" style="opacity: 0.5;">
+            <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 20px 0;">Waiting for applicant...</div>
+        </div>
+        
+        <div class="card" id="credit-app-card" style="display: none; border-color: rgba(245, 158, 11, 0.3);">
+            <!-- Populated via JS -->
+        </div>
+
+        <h3>Recent Activity</h3>
+        <div class="pv-feed" id="pv-feed-list">
+            <!-- Feed items -->
+        </div>
+
+        <div class="pv-stats">
+            <div>
+                <span class="pv-form-label" style="font-size: 0.7rem;">KYC Attempted</span>
+                <span id="stat-pv-attempted" style="color: #fff;">0</span>
+            </div>
+            <div>
+                <span class="pv-form-label" style="font-size: 0.7rem;">Accounts Suspended</span>
+                <span id="stat-pv-suspended" style="color: var(--red);">0</span>
+            </div>
+            <div>
+                <span class="pv-form-label" style="font-size: 0.7rem;">Credit Requested</span>
+                <span id="stat-pv-credit-req" style="color: var(--amber);">₹0</span>
+            </div>
+            <div>
+                <span class="pv-form-label" style="font-size: 0.7rem;">Credit Issued</span>
+                <span id="stat-pv-credit-iss" style="color: var(--green);">₹0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Attacker Column -->
+    <div class="col col-atk">
+        <h2>
+            <span style="color: var(--red);">Identity Fraud Console</span>
+            <span class="badge b-red pulsing">ATTACK AGENT</span>
+        </h2>
+
+        <div class="card" style="border-color: rgba(239, 68, 68, 0.3);">
+            <div style="font-family: 'JetBrains Mono'; font-size: 0.85rem; color: #ccc;">
+                <div style="margin-bottom: 6px;"><span style="color: var(--red);">Device ID:</span> d4f8a2c1...c3 (Shared)</div>
+                <div style="margin-bottom: 6px;"><span style="color: var(--red);">Payload:</span> 15 Synthetic PANs</div>
+                <div><span style="color: var(--red);">Strategy:</span> Scale Accounts → Max BNPL Draw</div>
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 16px;">
+            <button class="atk-btn btn-launch" onclick="startAttack()">LAUNCH BOT ATTACK</button>
+            <button class="atk-btn btn-stop" onclick="stopAttack()" style="width: auto;">STOP</button>
+        </div>
+        <button class="atk-btn btn-reset" onclick="resetDemo()">RESET AGENT STATE</button>
+
+        <div class="terminal" id="atk-terminal">
+            <div style="color: #666;">> Initializing synthetic identity payloads...</div>
+            <div style="color: #666;">> Target endpoint acquired: PayVault KYC.</div>
+        </div>
+
+        <div class="atk-stats">
+            <div class="atk-stat-box">
+                <span>Profiles Scaled</span>
+                <strong id="atk-scaled">0 / 15</strong>
+            </div>
+            <div class="atk-stat-box">
+                <span>Accounts Burnt</span>
+                <strong id="atk-burnt" style="color: var(--red)">0</strong>
+            </div>
+            <div class="atk-stat-box">
+                <span>Credit Attempted</span>
+                <strong id="atk-attempted" style="color: var(--amber)">₹0</strong>
+            </div>
+            <div class="atk-stat-box">
+                <span>Cash Extracted</span>
+                <strong id="atk-extracted" style="color: var(--green)">₹0</strong>
+            </div>
+        </div>
+    </div>
+
+    <!-- ThreatMonitor SOC Column -->
+    <div class="col col-soc">
+        <h2>
+            <span style="display: flex; align-items: center; gap: 8px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--blue)"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                ThreatMonitor AI
+            </span>
+            <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: var(--red); animation: pulse 2s infinite;">LIVE</span>
+        </h2>
+
+        <!-- Comparison Table -->
+        <table class="soc-table">
+            <thead>
+                <tr>
+                    <th>Event</th>
+                    <th>Legacy Rules (Format)</th>
+                    <th>AetherSense AI (Behavior)</th>
+                </tr>
+            </thead>
+            <tbody id="soc-table-body">
+                <!-- Populated via JS -->
+            </tbody>
+        </table>
+
+        <!-- Device Hash Visualization -->
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Device Hash Collision: <span style="font-family: monospace; color: #fff;">d4f8a...</span> (<span id="dev-collision-count">0</span> accounts spanning)</div>
+        <div class="collision-viz" id="device-viz">
+            <!-- 15 dots -->
+        </div>
+
+        <!-- Gauges -->
+        <div class="gauge-container">
+            <div>
+                <div class="gauge">
+                    <svg><circle class="gauge-bg" cx="50" cy="50" r="40"/><circle class="gauge-val" id="gval-acct" cx="50" cy="50" r="40"/></svg>
+                    <div class="gauge-text" id="gtext-acct">0</div>
+                </div>
+                <div class="gauge-label">Creation Risk</div>
+            </div>
+            <div>
+                <div class="gauge">
+                    <svg><circle class="gauge-bg" cx="50" cy="50" r="40"/><circle class="gauge-val" id="gval-cred" cx="50" cy="50" r="40"/></svg>
+                    <div class="gauge-text" id="gtext-cred">0</div>
+                </div>
+                <div class="gauge-label">Credit Flow Risk</div>
+            </div>
+        </div>
+
+        <!-- Signal Bars -->
+        <div class="signal-bars">
+            <div>
+                <div class="sb-row"><span>Device Collision Score</span><span id="sb-vt-device">0</span></div>
+                <div class="sb-bar-bg"><div class="sb-bar-fill" id="sb-vl-device" style="background: var(--red);"></div></div>
+            </div>
+            <div>
+                <div class="sb-row"><span>Behavioral Entropy</span><span id="sb-vt-entropy">0</span></div>
+                <div class="sb-bar-bg"><div class="sb-bar-fill" id="sb-vl-entropy" style="background: var(--purple);"></div></div>
+            </div>
+            <div>
+                <div class="sb-row"><span>Account Velocity</span><span id="sb-vt-velocity">0</span></div>
+                <div class="sb-bar-bg"><div class="sb-bar-fill" id="sb-vl-velocity" style="background: var(--blue);"></div></div>
+            </div>
+            <div>
+                <div class="sb-row"><span>Credit Hunger Sequence</span><span id="sb-vt-hunger">0</span></div>
+                <div class="sb-bar-bg"><div class="sb-bar-fill" id="sb-vl-hunger" style="background: var(--amber);"></div></div>
+            </div>
+        </div>
+
+        <!-- Threat Report -->
+        <div class="card threat-report" id="threat-report">
+            <h3 style="color: var(--red); display: flex; align-items: center; gap: 8px;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                SYNTHETIC IDENTITY REPORT
+            </h3>
+            <div style="font-size: 0.85rem; line-height: 1.5; color: #ccc;" id="threat-narrative">
+                <!-- Populated via LLM/Scorer -->
+            </div>
+            <div style="margin-top: 12px; padding: 10px; background: rgba(0,0,0,0.5); border-radius: 6px; font-family: 'JetBrains Mono'; font-size: 0.8rem; color: var(--green);">
+                ACTION: Global Device Suspension Applied.<br>
+                <span style="color: var(--red);">Total Credit Blocked:</span> <span id="threat-blocked-amt">₹0</span>
+            </div>
+        </div>
+
+        <div class="model-status">
+            <div class="ms-indicator"><div class="ms-dot"></div> Device Scorer</div>
+            <div class="ms-indicator"><div class="ms-dot"></div> Entropy Scorer</div>
+            <div class="ms-indicator"><div class="ms-dot"></div> Velocity Scorer</div>
+            <div class="ms-indicator"><div class="ms-dot"></div> Credit Protocol</div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io("http://localhost:5000");
+
+        // UI State
+        let stats = {
+            attempted: 0,
+            suspended: 0,
+            creditAttempted: 0,
+            creditIssued: 0
+        };
+
+        const formatC = (num) => "₹" + num.toLocaleString('en-IN');
+        
+        // initialize device viz dots
+        const viz = document.getElementById('device-viz');
+        for(let i=0; i<15; i++) {
+            viz.innerHTML += `<div class="device-node" id="dn-${i}"></div>`;
+        }
+
+        socket.on("connect", () => {
+             console.log("Connected to backend");
+        });
+
+        socket.on("identity_update", (data) => {
+            updatePayVault(data);
+            updateAttacker(data);
+            updateSOC(data);
+        });
+
+        function updatePayVault(data) {
+            if (data.event_type === "account_created") {
+                stats.attempted++;
+                let badgeClass = data.status === "NORMAL" ? "b-green" : (data.status === "BLOCKED" ? "b-red" : "b-amber");
+                
+                if (data.status === "BLOCKED") stats.suspended++;
+
+                // Active App Card
+                const appCard = document.getElementById('active-app-card');
+                appCard.style.opacity = 1;
+                appCard.innerHTML = `
+                    <div class="pv-form-row"><span class="pv-form-label">Name</span><span>${data.name}</span></div>
+                    <div class="pv-form-row"><span class="pv-form-label">Account No</span><span style="font-family: 'JetBrains Mono'">${data.account_id}</span></div>
+                    <div class="pv-form-row"><span class="pv-form-label">Device Hash</span><span style="font-family: 'JetBrains Mono'">${data.device_fingerprint.substring(0, 8)}...</span></div>
+                    <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
+                        <span class="badge ${badgeClass}">${data.status}</span>
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">Risk: ${data.risk_score}</span>
+                    </div>
+                `;
+
+                // Feed
+                const feed = document.getElementById('pv-feed-list');
+                const row = document.createElement('div');
+                row.className = 'pv-feed-row';
+                row.innerHTML = `<span>${data.name}</span><span class="badge ${badgeClass}" style="transform: scale(0.8); margin: 0 -10px;">${data.status}</span><span style="font-family: 'JetBrains Mono';">${data.risk_score}</span>`;
+                feed.prepend(row);
+                if (feed.children.length > 8) feed.removeChild(feed.lastChild);
+
+                document.getElementById('credit-app-card').style.display = 'none';
+
+            } else if (data.event_type === "credit_applied") {
+                stats.creditAttempted += 50000;
+                let badgeClass = data.status === "APPROVED" ? "b-green" : (data.status === "REJECTED" ? "b-red" : "b-amber");
+                if (data.status === "APPROVED") stats.creditIssued += 50000;
+
+                const crCard = document.getElementById('credit-app-card');
+                crCard.style.display = 'block';
+                crCard.innerHTML = `
+                    <div class="pv-form-row" style="color: var(--amber); font-weight: 600; margin-bottom: 12px;">BNPL Credit Application</div>
+                    <div class="pv-form-row"><span class="pv-form-label">Account</span><span style="font-family: 'JetBrains Mono'">${data.account_id}</span></div>
+                    <div class="pv-form-row"><span class="pv-form-label">Requested</span><span>₹50,000</span></div>
+                    <div style="margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
+                        <span class="badge ${badgeClass}">${data.status}</span>
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">Risk: ${data.risk_score}</span>
+                    </div>
+                `;
+            }
+
+            document.getElementById('stat-pv-attempted').textContent = stats.attempted;
+            document.getElementById('stat-pv-suspended').textContent = stats.suspended;
+            document.getElementById('stat-pv-credit-req').textContent = formatC(stats.creditAttempted);
+            document.getElementById('stat-pv-credit-iss').textContent = formatC(stats.creditIssued);
+        }
+
+        function updateAttacker(data) {
+            const terminal = document.getElementById('atk-terminal');
+            const time = new Date().toLocaleTimeString();
+            let cClass = "tl-green";
+            if (data.risk_score > 30) cClass = "tl-amber";
+            if (data.risk_score > 55) cClass = "tl-orange";
+            if (data.risk_score >= 75) cClass = "tl-red";
+
+            if (data.event_type === "account_created") {
+                terminal.innerHTML += `<div class="terminal-line ${cClass}">[${time}] CREATE: ${data.name} | Acc: ${data.account_id} | ST: ${data.status} | R: ${data.risk_score}</div>`;
+            } else {
+                terminal.innerHTML += `<div class="terminal-line ${cClass}">[${time}] CREDIT: ₹50,000 | Acc: ${data.account_id} | ST: ${data.status} | R: ${data.risk_score}</div>`;
+            }
+            terminal.scrollTop = terminal.scrollHeight;
+
+            document.getElementById('atk-scaled').textContent = `${stats.attempted} / 15`;
+            document.getElementById('atk-burnt').textContent = stats.suspended;
+            document.getElementById('atk-attempted').textContent = formatC(stats.creditAttempted);
+            document.getElementById('atk-extracted').textContent = formatC(stats.creditIssued);
+        }
+
+        function updateSOC(data) {
+            // Update Table
+            const body = document.getElementById('soc-table-body');
+            const tr = document.createElement('tr');
+            
+            let legacyHtml = `<span style="color: var(--green);">PAN Valid ✓<br>APPROVED</span>`;
+            let aiHtml = `<span style="color: ${getRiskColor(data.risk_score)};">${data.status}<br>(Risk: ${data.risk_score})</span>`;
+
+            tr.innerHTML = `
+                <td style="font-family: 'JetBrains Mono';">${data.event_type === 'account_created' ? 'KYC_Creation' : 'Credit_Apply'}</td>
+                <td style="font-size: 0.75rem;">${legacyHtml}</td>
+                <td style="font-size: 0.75rem; font-weight: 600;">${aiHtml}</td>
+            `;
+            body.prepend(tr);
+            if (body.children.length > 5) body.removeChild(body.lastChild);
+
+            // Update Gauges & Bars
+            if (data.event_type === "account_created") {
+                updateGauge('gval-acct', 'gtext-acct', data.risk_score);
+                updateBar('sb-vl-device', 'sb-vt-device', data.device_score);
+                updateBar('sb-vl-entropy', 'sb-vt-entropy', data.entropy_score);
+                updateBar('sb-vl-velocity', 'sb-vt-velocity', data.velocity_score);
+
+                // Device collision visualization
+                document.getElementById('dev-collision-count').textContent = data.device_collision_count;
+                for(let i=0; i<15; i++) {
+                    const node = document.getElementById(`dn-${i}`);
+                    if (i < data.device_collision_count) {
+                        if (data.device_collision_count >= 3) {
+                            node.className = "device-node collision";
+                        } else {
+                            node.className = "device-node active";
+                        }
+                    } else {
+                        node.className = "device-node";
+                    }
+                }
+            } else {
+                updateGauge('gval-cred', 'gtext-cred', data.risk_score);
+                updateBar('sb-vl-hunger', 'sb-vt-hunger', data.hunger_score);
+            }
+
+            // Threat Report Trigger
+            if (data.action === "suspend_all" || data.action === "reject_credit") {
+                const report = document.getElementById('threat-report');
+                report.style.display = "block";
+                if(data.narrative && data.narrative.length > 0) {
+                    document.getElementById('threat-narrative').textContent = data.narrative;
+                }
+                document.getElementById('threat-blocked-amt').textContent = formatC(stats.creditAttempted - stats.creditIssued);
+            }
+        }
+
+        // Helpers
+        function getRiskColor(score) {
+            if (score <= 30) return "var(--green)";
+            if (score <= 55) return "var(--amber)";
+            if (score <= 74) return "var(--orange)";
+            return "var(--red)";
+        }
+        
+        function updateGauge(valId, textId, score) {
+            const circle = document.getElementById(valId);
+            const text = document.getElementById(textId);
+            
+            const offset = 251.2 - ((score / 100) * 251.2);
+            circle.style.strokeDashoffset = offset;
+            circle.style.stroke = getRiskColor(score);
+            text.textContent = score;
+            text.style.color = getRiskColor(score);
+        }
+
+        function updateBar(barId, txtId, score) {
+            document.getElementById(barId).style.width = `${score}%`;
+            document.getElementById(txtId).textContent = score;
+        }
+
+        // API Actions
+        function startAttack() {
+            fetch("http://localhost:5000/api/attack/start", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({attack_type: "synthetic_identity"})
+            });
+            document.getElementById('atk-terminal').innerHTML += `<div style="color: var(--blue);">> Launching autonomous scale-up script...</div>`;
+        }
+        
+        function stopAttack() {
+            fetch("http://localhost:5000/api/attack/stop", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({attack_type: "synthetic_identity"})
+            });
+            document.getElementById('atk-terminal').innerHTML += `<div style="color: var(--orange);">> STOP signal sent. Returning to base.</div>`;
+        }
+        
+        function resetDemo() {
+            fetch("http://localhost:5000/api/identity/reset", { method: "POST" }).then(() => {
+                location.reload();
+            });
+        }
+    </script>
+</body>
+</html>

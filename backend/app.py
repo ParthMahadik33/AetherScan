@@ -18,6 +18,8 @@ try:
     from . import scoring
     from . import aml_scorer
     from . import transaction_db
+    from . import identity_scorer
+    from . import identity_db
 except ImportError:
     import attack_launcher
     import database
@@ -27,6 +29,8 @@ except ImportError:
     import scoring
     import aml_scorer
     import transaction_db
+    import identity_scorer
+    import identity_db
 
 
 load_dotenv()
@@ -47,7 +51,9 @@ def test_route():
 
 database.init_db()
 transaction_db.init_db()
+identity_db.init_db()
 attack_launcher.ATTACK_MAP["smurfing"] = "simulation.attack_smurfing"
+attack_launcher.ATTACK_MAP["synthetic_identity"] = "simulation.attack_synthetic_identity"
 
 
 blocked_ips = set()
@@ -618,6 +624,155 @@ def api_aml_account(account_id):
 def api_aml_reset():
     aml_scorer.reset_state()
     transaction_db.clear_db()
+    return jsonify({"status": "cleared"}), 200
+
+# ----------------- IDENTITY ATTACK ENDPOINTS -----------------
+
+@app.route("/api/identity/create-account", methods=["POST"])
+def api_identity_create_account():
+    data = request.get_json(silent=True) or {}
+    account_id = data.get("account_id")
+    device_fingerprint = data.get("device_fingerprint")
+    
+    score_result = identity_scorer.score_account_creation(
+        account_id=account_id,
+        name=data.get("name"),
+        pan_number=data.get("pan_number"),
+        aadhaar_last4=data.get("aadhaar_last4"),
+        device_fingerprint=device_fingerprint,
+        form_fill_duration_ms=data.get("form_fill_duration_ms"),
+        screen_resolution=data.get("screen_resolution"),
+        timezone=data.get("timezone"),
+        browser_ua=data.get("browser_ua"),
+        timestamp=data.get("timestamp", now_iso())
+    )
+    
+    status = score_result["status"]
+    action = score_result["action"]
+    
+    # Enrich data for DB
+    data.update({
+        "status": status,
+        "risk_score": score_result["risk_score"],
+        "device_score": score_result["device_score"],
+        "entropy_score": score_result["entropy_score"],
+        "velocity_score": score_result["velocity_score"]
+    })
+    
+    identity_db.insert_account(data)
+    
+    if action == "suspend_all":
+        # Retroactive suspensension for previously created accounts on device
+        accounts = identity_db.get_accounts_by_device(device_fingerprint)
+        for acc in accounts:
+            if acc["status"] != "BLOCKED":
+                identity_db.update_account_status(acc["account_id"], "BLOCKED")
+        
+        # Identity Alert
+        identity_db.insert_identity_alert({
+            "device_fingerprint": device_fingerprint,
+            "account_ids": [a["account_id"] for a in accounts],
+            "total_accounts": len(accounts),
+            "risk_score": score_result["risk_score"],
+            "action": "suspend_all",
+            "narrative": score_result["narrative"]
+        })
+        
+    res = {
+        "event_type": "account_created",
+        "account_id": account_id,
+        "name": data.get("name"),
+        "device_fingerprint": device_fingerprint,
+        "device_collision_count": score_result["device_collision_count"],
+        "status": status,
+        "action": action,
+        "risk_score": score_result["risk_score"],
+        "device_score": score_result["device_score"],
+        "entropy_score": score_result["entropy_score"],
+        "velocity_score": score_result["velocity_score"],
+        "narrative": score_result["narrative"],
+        "timestamp": now_iso()
+    }
+    
+    socketio.emit("identity_update", res)
+    return jsonify(res), 200
+
+@app.route("/api/identity/apply-credit", methods=["POST"])
+def api_identity_apply_credit():
+    data = request.get_json(silent=True) or {}
+    account_id = data.get("account_id")
+    requested_amount = data.get("requested_amount", 50000)
+    timestamp = now_iso()
+    
+    # calculate age and TXN counts
+    account_age_seconds = 0
+    transaction_count = 0
+    
+    accounts = identity_db.get_all_accounts(limit=100)
+    for acc in accounts:
+        if acc["account_id"] == account_id:
+            try:
+                created = datetime.datetime.fromisoformat(acc["created_at"])
+                account_age_seconds = (datetime.datetime.utcnow() - created).total_seconds()
+            except:
+                pass
+            break
+            
+    # Lookup transactions
+    txns = transaction_db.get_transactions(account_id, limit=100)
+    transaction_count = len(txns)
+    
+    score_result = identity_scorer.score_credit_application(
+        account_id, requested_amount, account_age_seconds, transaction_count, timestamp
+    )
+    
+    data.update({
+        "account_age_seconds": account_age_seconds,
+        "transaction_count": transaction_count,
+        "status": score_result["status"],
+        "risk_score": score_result["risk_score"],
+        "hunger_score": score_result["hunger_score"],
+        "maturity_score": score_result["maturity_score"],
+        "narrative": score_result["narrative"]
+    })
+    
+    app_id = identity_db.insert_credit_application(data)
+    
+    if score_result["action"] == "reject_credit":
+        identity_db.update_account_status(account_id, "BLOCKED")
+        
+    res = {
+        "event_type": "credit_applied",
+        "application_id": app_id,
+        "account_id": account_id,
+        "status": score_result["status"],
+        "action": score_result["action"],
+        "risk_score": score_result["risk_score"],
+        "hunger_score": score_result["hunger_score"],
+        "maturity_score": score_result["maturity_score"],
+        "narrative": score_result["narrative"],
+        "timestamp": timestamp
+    }
+    
+    socketio.emit("identity_update", res)
+    return jsonify(res), 200
+
+@app.route("/api/identity/accounts", methods=["GET"])
+def api_identity_accounts():
+    return jsonify(identity_db.get_all_accounts(limit=20)), 200
+
+@app.route("/api/identity/alerts", methods=["GET"])
+def api_identity_alerts():
+    return jsonify(identity_db.get_identity_alerts(limit=50)), 200
+
+@app.route("/api/identity/stats", methods=["GET"])
+def api_identity_stats():
+    return jsonify(identity_db.get_device_stats()), 200
+
+@app.route("/api/identity/reset", methods=["POST"])
+def api_identity_reset():
+    identity_scorer.reset_state()
+    identity_db.reset_database()
     return jsonify({"status": "cleared"}), 200
 
 
